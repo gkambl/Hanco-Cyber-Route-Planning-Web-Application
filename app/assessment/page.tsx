@@ -7,8 +7,6 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ArrowLeft, ArrowRight, Info, Users, TrendingUp, Calendar, HelpCircle, AlertTriangle, CheckCircle, Eye, Shield, Lock, Zap, TrendingDown } from 'lucide-react';
-import { assessmentQuestions, leadCaptureFields, AssessmentQuestion } from '@/lib/assessment-config';
-import { AssessmentResponse, shouldShowQuestion, calculateLiveRiskScore } from '@/lib/assessment-logic';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
@@ -18,6 +16,16 @@ import { Textarea } from '@/components/ui/textarea';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+
+// Import your config files - make sure these exist and are properly exported
+import { assessmentQuestions, leadCaptureFields, AssessmentQuestion } from '@/lib/assessment-config';
+import { AssessmentResponse, shouldShowQuestion, calculateLiveRiskScore } from '@/lib/assessment-logic';
+
+type LiveRisk = {
+  score: number;
+  impact: 'low' | 'medium' | 'high' | 'critical';
+  trend: 'up' | 'down' | 'stable';
+};
 
 interface LeadData {
   firstName: string;
@@ -89,14 +97,21 @@ export default function Assessment() {
   });
 
   // Enhanced state for dynamic assessment
-  const [visibleQuestions, setVisibleQuestions] = useState<AssessmentQuestion[]>([]);
-  const [liveRiskScore, setLiveRiskScore] = useState({ score: 0, impact: 'low' as const, trend: 'stable' as const });
+  const [visibleQuestions, setVisibleQuestions] = useState<Array<AssessmentQuestion>>([]);
+  const [liveRiskScore, setLiveRiskScore] = useState<LiveRisk>({
+    score: 0,
+    impact: 'low',
+    trend: 'stable',
+  });
+
   const [proficiency, setProficiency] = useState<'novice' | 'intermediate' | 'expert'>('intermediate');
 
   // Initialize assessment - clear any existing data
   useEffect(() => {
-    localStorage.removeItem('assessmentResponses');
-    localStorage.removeItem('leadData');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('assessmentResponses');
+      localStorage.removeItem('leadData');
+    }
     setIsInitialized(true);
   }, []);
 
@@ -147,8 +162,10 @@ export default function Assessment() {
     const progressInterval = setInterval(() => {
       setLoadingProgress(prev => {
         if (prev >= 100) {
-          localStorage.setItem('assessmentResponses', JSON.stringify(responses));
-          localStorage.setItem('leadData', JSON.stringify(leadData));
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('assessmentResponses', JSON.stringify(responses));
+            localStorage.setItem('leadData', JSON.stringify(leadData));
+          }
           router.push('/results');
           return 100;
         }
@@ -318,7 +335,7 @@ export default function Assessment() {
                   <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <h4 className="text-sm font-medium text-amber-800 mb-2">
-                      ⚠️ Compliance complexity warning
+                      Compliance complexity warning
                     </h4>
                     <p className="text-sm text-amber-700 mb-3">
                       You've selected multiple compliance frameworks. Whilst compliance is important, 
@@ -332,7 +349,7 @@ export default function Assessment() {
                     </ul>
                     <div className="bg-amber-100 p-3 rounded border border-amber-300">
                       <p className="text-sm text-amber-800">
-                        <strong>💡 Hanco Cyber Recommendation:</strong> Focus on 1-2 primary frameworks that align 
+                        <strong>Hanco Cyber Recommendation:</strong> Focus on 1-2 primary frameworks that align 
                         with your business needs. We'll help you achieve <em>effective</em> security, not just 
                         checkbox compliance.
                       </p>
@@ -480,7 +497,7 @@ export default function Assessment() {
               </div>
               <div className="flex-1">
                 <h3 className="text-lg font-semibold text-red-800 mb-2">
-                  💡 Cyber tip: {currentTip.title}
+                  Cyber tip: {currentTip.title}
                 </h3>
                 <p className="text-red-700">
                   {currentTip.tip}
@@ -549,7 +566,7 @@ export default function Assessment() {
             
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
               <h3 className="text-sm font-medium text-blue-800 mb-2">
-                📊 How your company name helps personalise results:
+                How your company name helps personalise results:
               </h3>
               <ul className="text-xs text-blue-700 space-y-1 text-left">
                 <li>• Industry-specific threat intelligence and benchmarks</li>
@@ -560,7 +577,7 @@ export default function Assessment() {
               </ul>
             </div>
           </div>
-
+          
           <form onSubmit={(e) => {
             e.preventDefault();
             const formData = new FormData(e.currentTarget);
@@ -611,10 +628,10 @@ export default function Assessment() {
               <Shield className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
               <div>
                 <h4 className="text-sm font-medium text-green-800 mb-2">
-                  🔒 Your privacy is protected
+                  Your privacy is protected
                 </h4>
                 <div className="text-xs text-green-700 space-y-1">
-                  <p><strong>GDPR Compliance:</strong> Your information is processed lawfully under legitimate interest for providing personalised cybersecurity recommendations.</p>
+                  <p><strong>GDPR compliance:</strong> Your information is processed lawfully under legitimate interest for providing personalised cybersecurity recommendations.</p>
                   <p><strong>Data Use:</strong> We use your details solely to:</p>
                   <ul className="ml-3 space-y-0.5">
                     <li>• Personalise your assessment results</li>
@@ -623,7 +640,7 @@ export default function Assessment() {
                     <li>• Contact you about your results (if requested)</li>
                   </ul>
                   <p><strong>No Sharing:</strong> We never sell, rent, or share your data with third parties for marketing purposes.</p>
-                  <p><strong>Your Rights:</strong> You can request access, correction, or deletion of your data at any time by contacting gouresh@hancoglobal.com</p>
+                  <p><strong>Your Rights:</strong> You can request access, correction, or deletion of your data at any time by contacting info@hancocyber.com</p>
                 </div>
               </div>
             </div>
@@ -652,7 +669,7 @@ export default function Assessment() {
                 className="h-10 w-auto"
               />
               <div>
-                <p className="text-sm text-gray-600">Security Assessment</p>
+                <p className="text-sm text-gray-600">Security assessment</p>
               </div>
             </Link>
             
@@ -804,8 +821,8 @@ export default function Assessment() {
           <div className="text-sm">
             <div className="font-medium text-gray-900 mb-1">Live Activity</div>
             <div className="text-gray-600 space-y-1">
-              <div>📊 {socialProofStats.weeklyAssessments} assessments this week</div>
-              <div>🎯 Average industry risk: {socialProofStats.averageRisk}%</div>
+              <div>{socialProofStats.weeklyAssessments} assessments this week</div>
+              <div>Average industry risk: {socialProofStats.averageRisk}%</div>
               {responses.length > 1 && (
                 <div className="pt-2 border-t border-gray-200">
                   <div className="flex items-center space-x-2">
