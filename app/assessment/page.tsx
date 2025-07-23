@@ -182,7 +182,7 @@ export default function Assessment() {
 
   // Show lead capture after completing all visible questions
   useEffect(() => {
-    if (currentStep >= visibleQuestions.length && visibleQuestions.length > 0 && !leadData && !showLeadCapture && isInitialized) {
+    if (currentStep >= visibleQuestions.length && visibleQuestions.length > 0 && !leadData && !showLeadCapture && !showDisclaimerWarning && !showLoadingScreen && isInitialized) {
       setShowLeadCapture(true);
     }
   }, [currentStep, visibleQuestions.length, leadData, showLeadCapture, isInitialized]);
@@ -220,7 +220,7 @@ export default function Assessment() {
   };
 
   const isCurrentStepValid = (): boolean => {
-    if (!currentQuestion) return false;
+    if (!currentQuestion || currentStep >= visibleQuestions.length) return true;
     const currentResponse = getCurrentResponse(currentQuestion.id);
     if (!currentResponse) return false;
     
@@ -232,9 +232,9 @@ export default function Assessment() {
   };
 
   const handleNext = () => {
-    if (currentStep < totalSteps - 1) {
+    if (currentStep < visibleQuestions.length - 1) {
       setCurrentStep(currentStep + 1);
-    } else {
+    } else if (currentStep >= visibleQuestions.length - 1 && !showLeadCapture && !leadData) {
       setShowLeadCapture(true);
     }
   };
@@ -559,4 +559,393 @@ export default function Assessment() {
           </div>
 
           <p className="text-xs text-gray-500 text-center mt-6">
-            By
+            By proceeding, you acknowledge that this assessment provides general guidance only and that specific security recommendations require detailed consultation.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
+  // Loading Screen with Cyber Tips
+  if (showLoadingScreen) {
+    const currentTip = cyberTips[currentTipIndex];
+    const IconComponent = currentTip.icon;
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-red-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-2xl p-8">
+          <div className="text-center mb-8">
+            <div className="bg-white p-4 rounded-full shadow-sm w-20 h-20 flex items-center justify-center mx-auto mb-6">
+              <Image
+                src="/HancoCyber-White-landscape-375.png"
+                alt="Hanco Cyber"
+                width={60}
+                height={15}
+                className="h-4 w-auto"
+              />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              Analysing your cybersecurity posture
+            </h2>
+            <p className="text-gray-600 mb-6">
+              We're processing your responses and generating personalised recommendations...
+            </p>
+            
+            <div className="mb-8">
+              <Progress value={loadingProgress} className="h-3 mb-2" />
+              <p className="text-sm text-gray-500">
+                {Math.round(loadingProgress)}% complete
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-100 rounded-lg p-6 mb-6">
+            <div className="flex items-start space-x-4">
+              <div className="bg-red-100 p-3 rounded-full flex-shrink-0">
+                <IconComponent className="h-6 w-6 text-red-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-red-800 mb-2">
+                  Cyber tip: {currentTip.title}
+                </h3>
+                <p className="text-red-700">
+                  {currentTip.tip}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-center space-x-2 mb-6">
+            {cyberTips.map((_, index) => (
+              <div
+                key={index}
+                className={`w-2 h-2 rounded-full transition-colors ${
+                  index === currentTipIndex ? 'bg-red-600' : 'bg-gray-300'
+                }`}
+              />
+            ))}
+          </div>
+
+          <div className="text-center">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">
+              What we're analysing:
+            </h4>
+            <div className="grid grid-cols-2 gap-3 text-xs text-gray-600">
+              <div className="flex items-center justify-center p-2 bg-gray-50 rounded">
+                <CheckCircle className="h-3 w-3 text-green-500 mr-1" />
+                Risk assessment
+              </div>
+              <div className="flex items-center justify-center p-2 bg-gray-50 rounded">
+                <CheckCircle className="h-3 w-3 text-green-500 mr-1" />
+                Compliance gaps
+              </div>
+              <div className="flex items-center justify-center p-2 bg-gray-50 rounded">
+                <CheckCircle className="h-3 w-3 text-green-500 mr-1" />
+                Service recommendations
+              </div>
+              <div className="flex items-center justify-center p-2 bg-gray-50 rounded">
+                <CheckCircle className="h-3 w-3 text-green-500 mr-1" />
+                ROI calculations
+              </div>
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (showLeadCapture) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-red-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md p-8">
+          <div className="text-center mb-6">
+            <div className="bg-white p-4 rounded-full shadow-sm w-20 h-20 flex items-center justify-center mx-auto mb-4">
+              <Image
+                src="/HancoCyber-White-landscape-375.png"
+                alt="Hanco Cyber"
+                width={60}
+                height={15}
+                className="h-4 w-auto"
+              />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Get your personalised results</h2>
+            <p className="text-gray-600 mb-4">
+              You've completed the assessment! Please share your details to receive your personalised cybersecurity roadmap and recommendations.
+            </p>
+            
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <h3 className="text-sm font-medium text-blue-800 mb-2">
+                How your company name helps personalise results:
+              </h3>
+              <ul className="text-xs text-blue-700 space-y-1 text-left">
+                <li>• Industry-specific threat intelligence and benchmarks</li>
+                <li>• Tailored compliance requirements for your sector</li>
+                <li>• Company size-appropriate service recommendations</li>
+                <li>• Relevant case studies and peer comparisons</li>
+                <li>• Accurate ROI calculations based on your business model</li>
+              </ul>
+            </div>
+          </div>
+          
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const formData = new FormData(e.currentTarget);
+            const data: LeadData = {
+              firstName: formData.get('firstName') as string,
+              lastName: formData.get('lastName') as string,
+              email: formData.get('email') as string,
+              company: formData.get('company') as string,
+              jobTitle: formData.get('jobTitle') as string,
+              phone: formData.get('phone') as string,
+            };
+            handleLeadCapture(data);
+          }} className="space-y-4">
+            {leadCaptureFields.map((field) => (
+              <div key={field.id}>
+                <Label htmlFor={field.id} className="text-sm font-medium">
+                  {field.label} {field.required && <span className="text-red-500">*</span>}
+                </Label>
+                <Input
+                  id={field.id}
+                  name={field.id}
+                  type={field.type}
+                  required={field.required}
+                  className="mt-1"
+                />
+              </div>
+            ))}
+            
+            <div className="space-y-3">
+              <Button type="submit" className="w-full bg-red-600 hover:bg-red-700">
+                View my personalised results
+              </Button>
+              
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="w-full border-gray-300 text-gray-600 hover:bg-gray-50"
+                onClick={handleSkipLeadCapture}
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                Just let me see my results
+              </Button>
+            </div>
+          </form>
+
+          <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-start space-x-2">
+              <Shield className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-medium text-green-800 mb-2">
+                  Your privacy is protected
+                </h4>
+                <div className="text-xs text-green-700 space-y-1">
+                  <p><strong>GDPR compliance:</strong> Your information is processed lawfully under legitimate interest for providing personalised cybersecurity recommendations.</p>
+                  <p><strong>Data Use:</strong> We use your details solely to:</p>
+                  <ul className="ml-3 space-y-0.5">
+                    <li>• Personalise your assessment results</li>
+                    <li>• Provide industry-specific recommendations</li>
+                    <li>• Calculate accurate ROI models for your business</li>
+                    <li>• Contact you about your results (if requested)</li>
+                  </ul>
+                  <p><strong>No Sharing:</strong> We never sell, rent, or share your data with third parties for marketing purposes.</p>
+                  <p><strong>Your Rights:</strong> You can request access, correction, or deletion of your data at any time by contacting info@hancocyber.com</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500 text-center mt-4">
+            Your information is secure and will only be used to provide personalised recommendations.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-red-50">
+      {/* Header */}
+      <header className="bg-white/80 backdrop-blur-sm border-b border-red-100 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center justify-between">
+            <Link href="/" className="flex items-center space-x-3">
+              <Image
+                src="/HancoCyber-White-landscape-375.png"
+                alt="Hanco Cyber"
+                width={180}
+                height={45}
+                className="h-10 w-auto"
+              />
+              <div>
+                <p className="text-sm text-gray-600">Security assessment</p>
+              </div>
+            </Link>
+            
+            <div className="flex items-center space-x-4">
+              <Badge variant="outline" className="border-red-200 text-red-700">
+                <Users className="h-3 w-3 mr-1" />
+                {socialProofStats.todayAssessments} completed today
+              </Badge>
+              <Badge variant="outline" className="border-red-200 text-red-700">
+                <TrendingUp className="h-3 w-3 mr-1" />
+                Avg. risk: {socialProofStats.averageRisk}%
+              </Badge>
+              
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={handleScheduleConsultation}
+                className="border-red-200 text-red-700 hover:bg-red-50 hidden sm:flex"
+              >
+                <Calendar className="h-4 w-4 mr-2" />
+                Schedule Consultation
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Progress Bar with Live Risk Score */}
+      <div className="bg-white border-b border-red-100">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-700">
+              Question {currentStep + 1} of {totalSteps}
+            </span>
+            <div className="flex items-center space-x-4">
+              {responses.length > 1 && (
+                <div className="flex items-center space-x-2">
+                  <Badge className={`text-xs ${getRiskColor(liveRiskScore.impact)}`}>
+                    Risk: {liveRiskScore.score}%
+                  </Badge>
+                  <div className={`${getRiskColor(liveRiskScore.impact)} p-1 rounded`}>
+                    {getTrendIcon(liveRiskScore.trend)}
+                  </div>
+                </div>
+              )}
+              <span className="text-sm text-gray-500">
+                {Math.round(progress)}% Complete
+              </span>
+            </div>
+          </div>
+          <Progress value={progress} className="h-2" />
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pb-32">
+        {currentQuestion && (
+          <Card className="p-8 relative">
+            <div className="absolute top-6 right-6">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleScheduleConsultation}
+                      className="text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <HelpCircle className="h-5 w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="max-w-xs">
+                    <p className="text-sm">Need help answering? Schedule a consultation with our experts</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+
+            <div className="mb-8 pr-12">
+              <div className="flex items-start justify-between mb-4">
+                <h2 className="text-2xl font-bold text-gray-900">
+                  {currentQuestion.title}
+                </h2>
+                {currentQuestion.tooltip && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-5 w-5 text-gray-400 cursor-help flex-shrink-0 ml-2" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-sm">
+                        <p>{currentQuestion.tooltip}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              </div>
+              <p className="text-gray-600 text-lg">
+                {currentQuestion.description}
+              </p>
+            </div>
+
+            <div className="mb-12">
+              {renderQuestion(currentQuestion)}
+            </div>
+
+            <div className="mb-8 p-4 bg-gradient-to-r from-red-50 to-orange-50 border border-red-100 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <h4 className="text-sm font-medium text-red-800 mb-1">Need guidance on this question?</h4>
+                  <p className="text-xs text-red-600">Our cybersecurity experts can help you assess your specific situation</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleScheduleConsultation}
+                  className="border-red-200 text-red-700 hover:bg-red-100 ml-4 flex-shrink-0"
+                >
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Get Expert Help
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center">
+              <Button
+                variant="outline"
+                onClick={handlePrevious}
+                disabled={currentStep === 0}
+                className="flex items-center"
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Previous
+              </Button>
+
+              <Button
+                onClick={handleNext}
+                disabled={!isCurrentStepValid()}
+                className="bg-red-600 hover:bg-red-700 text-white flex items-center"
+              >
+                {currentStep >= visibleQuestions.length - 1 ? 'Complete Assessment' : 'Next'}
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        {/* Enhanced Floating Social Proof with Live Risk Updates */}
+        <div className="fixed bottom-6 left-6 bg-white p-4 rounded-lg shadow-lg border border-red-100 max-w-sm z-40">
+          <div className="text-sm">
+            <div className="font-medium text-gray-900 mb-1">Live Activity</div>
+            <div className="text-gray-600 space-y-1">
+              <div>{socialProofStats.weeklyAssessments} assessments this week</div>
+              <div>Average industry risk: {socialProofStats.averageRisk}%</div>
+              {responses.length > 1 && (
+                <div className="pt-2 border-t border-gray-200">
+                  <div className="flex items-center space-x-2">
+                    <span>Your current risk:</span>
+                    <Badge className={`text-xs ${getRiskColor(liveRiskScore.impact)}`}>
+                      {liveRiskScore.score}%
+                    </Badge>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
