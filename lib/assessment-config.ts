@@ -1,7 +1,92 @@
 // lib/assessment-config.ts
 
+export interface AssessmentOption {
+  id: string;
+  label: string;
+  value: string | number;
+  riskMultiplier: number;
+  tooltip?: string;
+  riskImpact?: 'low' | 'medium' | 'high' | 'critical';
+}
+
+export interface BranchingCondition {
+  questionId: string;
+  operator: 'includes' | 'excludes' | 'equals' | 'greaterThan' | 'lessThan';
+  value: string | number;
+}
+
+export interface AssessmentQuestion {
+  id: string;
+  title: string;
+  description: string;
+  type: 'multiSelect' | 'singleSelect' | 'slider' | 'text';
+  tooltip?: string;
+  required: boolean;
+  weight: number;
+  options?: AssessmentOption[];
+  meta?: {
+    noviceFriendly?: boolean;
+    expertOnly?: boolean;
+    showIf?: BranchingCondition[];
+    hideIf?: BranchingCondition[];
+  };
+}
+
 export const assessmentQuestions: AssessmentQuestion[] = [
-  // ─── 0. USER PROFICIENCY ─────────────────────────────────────────────────────
+  // ─── 0. CURRENCY PREFERENCE ─────────────────────────────────────────────────────
+  {
+    id: 'currency-preference',
+    title: 'What currency would you like to see pricing in?',
+    description: 'All pricing estimates will be shown in your preferred currency.',
+    type: 'singleSelect',
+    required: true,
+    weight: 0,
+    options: [
+      {
+        id: 'gbp',
+        label: 'British Pounds (£)',
+        value: 'gbp',
+        riskMultiplier: 0,
+        tooltip: 'UK Pounds Sterling',
+        riskImpact: 'low'
+      },
+      {
+        id: 'usd',
+        label: 'US Dollars ($)',
+        value: 'usd',
+        riskMultiplier: 0,
+        tooltip: 'United States Dollars',
+        riskImpact: 'low'
+      },
+      {
+        id: 'eur',
+        label: 'Euros (€)',
+        value: 'eur',
+        riskMultiplier: 0,
+        tooltip: 'European Union Euros',
+        riskImpact: 'low'
+      },
+      {
+        id: 'cad',
+        label: 'Canadian Dollars (C$)',
+        value: 'cad',
+        riskMultiplier: 0,
+        tooltip: 'Canadian Dollars',
+        riskImpact: 'low'
+      },
+      {
+        id: 'aud',
+        label: 'Australian Dollars (A$)',
+        value: 'aud',
+        riskMultiplier: 0,
+        tooltip: 'Australian Dollars',
+        riskImpact: 'low'
+      }
+    ],
+    meta: { noviceFriendly: true }
+  },
+
+  // ─── 1. USER PROFICIENCY ─────────────────────────────────────────────────────
   {
     id: 'user-proficiency',
     title: 'How would you describe your cyber security knowledge?',
@@ -38,7 +123,106 @@ export const assessmentQuestions: AssessmentQuestion[] = [
     meta: { noviceFriendly: true }
   },
 
-  // ─── 1. Organisation Profile & Scale ───────────────────────────────────────────
+  // ─── 2.5. Current Security Controls Assessment ─────────────────────────────────
+  {
+    id: 'current-security-controls',
+    title: 'Current Security Controls',
+    description: 'Which security controls do you currently have in place?',
+    type: 'multiSelect',
+    tooltip: 'Helps us understand your existing security posture more accurately',
+    required: true,
+    weight: 2.0,
+    options: [
+      { id: 'endpoint-protection', label: 'Endpoint Protection (Antivirus/EDR)', value: 'endpoint-protection', riskMultiplier: -0.3, tooltip: 'Reduces malware and endpoint threats', riskImpact: 'low' },
+      { id: 'firewall-configured', label: 'Properly Configured Firewall', value: 'firewall-configured', riskMultiplier: -0.2, tooltip: 'Network perimeter protection', riskImpact: 'low' },
+      { id: 'mfa-enabled', label: 'Multi-Factor Authentication', value: 'mfa-enabled', riskMultiplier: -0.4, tooltip: 'Significantly reduces account compromise', riskImpact: 'low' },
+      { id: 'backup-strategy', label: 'Regular Backups (Tested)', value: 'backup-strategy', riskMultiplier: -0.3, tooltip: 'Critical for ransomware recovery', riskImpact: 'low' },
+      { id: 'patch-management', label: 'Automated Patch Management', value: 'patch-management', riskMultiplier: -0.3, tooltip: 'Reduces vulnerability exposure', riskImpact: 'low' },
+      { id: 'security-monitoring', label: 'Security Monitoring/SIEM', value: 'security-monitoring', riskMultiplier: -0.4, tooltip: 'Early threat detection', riskImpact: 'low' },
+      { id: 'employee-training', label: 'Regular Security Training', value: 'employee-training', riskMultiplier: -0.2, tooltip: 'Reduces human error risks', riskImpact: 'low' },
+      { id: 'incident-response-plan', label: 'Incident Response Plan', value: 'incident-response-plan', riskMultiplier: -0.2, tooltip: 'Faster recovery from incidents', riskImpact: 'low' },
+      { id: 'vulnerability-scanning', label: 'Regular Vulnerability Scanning', value: 'vulnerability-scanning', riskMultiplier: -0.3, tooltip: 'Proactive vulnerability management', riskImpact: 'low' },
+      { id: 'email-security', label: 'Advanced Email Security', value: 'email-security', riskMultiplier: -0.2, tooltip: 'Blocks phishing and malware', riskImpact: 'low' },
+      { id: 'network-segmentation', label: 'Network Segmentation', value: 'network-segmentation', riskMultiplier: -0.3, tooltip: 'Limits breach impact', riskImpact: 'low' },
+      { id: 'privileged-access', label: 'Privileged Access Management', value: 'privileged-access', riskMultiplier: -0.4, tooltip: 'Controls admin access', riskImpact: 'low' },
+      { id: 'minimal-controls', label: 'Minimal/Basic Controls Only', value: 'minimal-controls', riskMultiplier: 1.5, tooltip: 'High risk exposure', riskImpact: 'critical' }
+    ],
+    meta: { noviceFriendly: true }
+  },
+
+  // ─── 2.6. Data Sensitivity Assessment ─────────────────────────────────────
+  {
+    id: 'data-sensitivity',
+    title: 'Data Sensitivity & Volume',
+    description: 'What types of sensitive data does your organisation handle?',
+    type: 'multiSelect',
+    tooltip: 'Different data types have different risk profiles and regulatory requirements',
+    required: true,
+    weight: 1.8,
+    options: [
+      { id: 'customer-pii', label: 'Customer Personal Data (PII)', value: 'customer-pii', riskMultiplier: 1.4, tooltip: 'GDPR and privacy law implications', riskImpact: 'high' },
+      { id: 'payment-data', label: 'Payment Card Data', value: 'payment-data', riskMultiplier: 1.8, tooltip: 'PCI DSS compliance required', riskImpact: 'critical' },
+      { id: 'health-records', label: 'Health/Medical Records', value: 'health-records', riskMultiplier: 1.9, tooltip: 'HIPAA and strict privacy laws', riskImpact: 'critical' },
+      { id: 'financial-records', label: 'Financial Records', value: 'financial-records', riskMultiplier: 1.6, tooltip: 'Financial regulations and SOX', riskImpact: 'high' },
+      { id: 'intellectual-property', label: 'Intellectual Property/Trade Secrets', value: 'intellectual-property', riskMultiplier: 1.5, tooltip: 'Competitive advantage at risk', riskImpact: 'high' },
+      { id: 'government-data', label: 'Government/Classified Data', value: 'government-data', riskMultiplier: 2.0, tooltip: 'National security implications', riskImpact: 'critical' },
+      { id: 'employee-data', label: 'Employee HR Data', value: 'employee-data', riskMultiplier: 1.2, tooltip: 'Employment law and privacy', riskImpact: 'medium' },
+      { id: 'business-confidential', label: 'Business Confidential Data', value: 'business-confidential', riskMultiplier: 1.1, tooltip: 'Competitive information', riskImpact: 'medium' },
+      { id: 'public-data-only', label: 'Mostly Public Data', value: 'public-data-only', riskMultiplier: 0.7, tooltip: 'Lower sensitivity profile', riskImpact: 'low' }
+    ],
+    meta: { noviceFriendly: true }
+  },
+
+  // ─── 2.7. IT Infrastructure Complexity ─────────────────────────────────────
+  {
+    id: 'infrastructure-complexity',
+    title: 'IT Infrastructure Complexity',
+    description: 'Describe your current IT infrastructure setup',
+    type: 'multiSelect',
+    tooltip: 'Infrastructure complexity directly impacts security risk and implementation approach',
+    required: true,
+    weight: 1.6,
+    options: [
+      { id: 'cloud-native', label: 'Cloud-Native (AWS/Azure/GCP)', value: 'cloud-native', riskMultiplier: 1.0, tooltip: 'Modern but needs cloud security expertise', riskImpact: 'medium' },
+      { id: 'hybrid-cloud', label: 'Hybrid Cloud Environment', value: 'hybrid-cloud', riskMultiplier: 1.3, tooltip: 'Complex integration challenges', riskImpact: 'medium' },
+      { id: 'on-premise-modern', label: 'Modern On-Premise Infrastructure', value: 'on-premise-modern', riskMultiplier: 1.1, tooltip: 'Controlled but needs maintenance', riskImpact: 'medium' },
+      { id: 'legacy-systems', label: 'Legacy Systems (10+ years)', value: 'legacy-systems', riskMultiplier: 1.8, tooltip: 'High risk from outdated security', riskImpact: 'critical' },
+      { id: 'mixed-environment', label: 'Mixed Legacy and Modern', value: 'mixed-environment', riskMultiplier: 1.4, tooltip: 'Integration and compatibility issues', riskImpact: 'high' },
+      { id: 'saas-heavy', label: 'SaaS-Heavy Environment', value: 'saas-heavy', riskMultiplier: 1.1, tooltip: 'Third-party dependency risks', riskImpact: 'medium' },
+      { id: 'iot-devices', label: 'IoT/Connected Devices', value: 'iot-devices', riskMultiplier: 1.5, tooltip: 'Expanded attack surface', riskImpact: 'high' },
+      { id: 'mobile-first', label: 'Mobile-First Operations', value: 'mobile-first', riskMultiplier: 1.2, tooltip: 'Mobile security challenges', riskImpact: 'medium' }
+    ],
+    meta: { 
+      hideIf: [
+        { questionId: 'user-proficiency', operator: 'equals', value: 'novice' }
+      ]
+    }
+  },
+
+  // ─── 2.8. Previous Security Incidents ─────────────────────────────────────
+  {
+    id: 'security-incidents',
+    title: 'Previous Security Incidents',
+    description: 'Has your organisation experienced any security incidents in the past 2 years?',
+    type: 'multiSelect',
+    tooltip: 'Past incidents indicate current vulnerabilities and help prioritise defenses',
+    required: true,
+    weight: 2.2,
+    options: [
+      { id: 'no-incidents', label: 'No Known Security Incidents', value: 'no-incidents', riskMultiplier: 0.8, tooltip: 'Good track record or undetected issues', riskImpact: 'low' },
+      { id: 'phishing-attempts', label: 'Phishing/Email Attacks', value: 'phishing-attempts', riskMultiplier: 1.3, tooltip: 'Common attack vector, needs training', riskImpact: 'medium' },
+      { id: 'malware-infection', label: 'Malware/Virus Infections', value: 'malware-infection', riskMultiplier: 1.5, tooltip: 'Endpoint security gaps', riskImpact: 'high' },
+      { id: 'data-breach', label: 'Data Breach/Unauthorized Access', value: 'data-breach', riskMultiplier: 2.0, tooltip: 'Serious security failure', riskImpact: 'critical' },
+      { id: 'ransomware-attack', label: 'Ransomware Attack', value: 'ransomware-attack', riskMultiplier: 2.2, tooltip: 'Critical business disruption', riskImpact: 'critical' },
+      { id: 'insider-incident', label: 'Insider Threat Incident', value: 'insider-incident', riskMultiplier: 1.7, tooltip: 'Internal controls needed', riskImpact: 'high' },
+      { id: 'ddos-attack', label: 'DDoS/Service Disruption', value: 'ddos-attack', riskMultiplier: 1.4, tooltip: 'Availability and resilience issues', riskImpact: 'medium' },
+      { id: 'supply-chain-compromise', label: 'Vendor/Supply Chain Compromise', value: 'supply-chain-compromise', riskMultiplier: 1.8, tooltip: 'Third-party risk management needed', riskImpact: 'high' },
+      { id: 'unsure-incidents', label: 'Unsure/No Monitoring in Place', value: 'unsure-incidents', riskMultiplier: 1.6, tooltip: 'Blind spots in security monitoring', riskImpact: 'high' }
+    ],
+    meta: { noviceFriendly: true }
+  },
+
+  // ─── 2. Organisation Profile & Scale ───────────────────────────────────────────
   {
     id: 'org-profile',
     title: 'Organisation Profile & Scale',
@@ -58,7 +242,7 @@ export const assessmentQuestions: AssessmentQuestion[] = [
     meta: { noviceFriendly: true }
   },
 
-  // ─── 2. Industry Vertical ────────────────────────────────────────────────────────
+  // ─── 3. Industry Vertical ────────────────────────────────────────────────────────
   {
     id: 'industry-vertical',
     title: 'Industry Vertical',
@@ -81,26 +265,28 @@ export const assessmentQuestions: AssessmentQuestion[] = [
     meta: { noviceFriendly: true }
   },
 
-  // ─── 3. Current cyber security Maturity ─────────────────────────────────────────
+  // ─── 4. Current cyber security Maturity ─────────────────────────────────────────
   {
     id: 'cyber-maturity',
-    title: 'Current cyber security maturity',
-    description: 'Assess your organisation\'s current cyber security capabilities',
+    title: 'Cyber Security Programme Maturity',
+    description: 'How would you describe your organisation\'s current cyber security programme?',
     type: 'singleSelect',
-    tooltip: 'Helps identify gaps and prioritise improvements',
+    tooltip: 'This helps us understand your starting point and recommend appropriate next steps',
     required: true,
     weight: 1.8,
     options: [
-      { id: 'basic', label: 'Basic (Antivirus, firewall)', value: 'basic', riskMultiplier: 2.5, tooltip: 'Minimal controls → high exposure', riskImpact: 'critical' },
-      { id: 'developing', label: 'Developing (Policies + updates)', value: 'developing', riskMultiplier: 2.0, tooltip: 'Foundation exists, needs structure', riskImpact: 'high' },
-      { id: 'managed', label: 'Managed (Processes + monitoring)', value: 'managed', riskMultiplier: 1.5, tooltip: 'Structured programme in place', riskImpact: 'medium' },
-      { id: 'optimized', label: 'Optimised (Advanced + hunting)', value: 'optimized', riskMultiplier: 1.0, tooltip: 'Proactive threat management', riskImpact: 'low' },
-      { id: 'uncertain', label: 'Uncertain / Needs review', value: 'uncertain', riskMultiplier: 2.2, tooltip: 'Baseline unknown, needs analysis', riskImpact: 'high' },
+      { id: 'ad-hoc', label: 'Ad-hoc (No formal programme)', value: 'ad-hoc', riskMultiplier: 2.8, tooltip: 'Individual tools without coordination', riskImpact: 'critical' },
+      { id: 'basic', label: 'Basic (Essential tools only)', value: 'basic', riskMultiplier: 2.3, tooltip: 'Antivirus, firewall, basic controls', riskImpact: 'critical' },
+      { id: 'developing', label: 'Developing (Policies + procedures)', value: 'developing', riskMultiplier: 1.9, tooltip: 'Documented processes, regular updates', riskImpact: 'high' },
+      { id: 'managed', label: 'Managed (Structured programme)', value: 'managed', riskMultiplier: 1.4, tooltip: 'Formal governance, monitoring, metrics', riskImpact: 'medium' },
+      { id: 'advanced', label: 'Advanced (Proactive defence)', value: 'advanced', riskMultiplier: 1.0, tooltip: 'Threat hunting, advanced analytics', riskImpact: 'low' },
+      { id: 'optimized', label: 'Optimised (Continuous improvement)', value: 'optimized', riskMultiplier: 0.7, tooltip: 'Mature programme with automation', riskImpact: 'low' },
+      { id: 'uncertain', label: 'Uncertain / Needs assessment', value: 'uncertain', riskMultiplier: 2.4, tooltip: 'Current state unknown', riskImpact: 'high' },
     ],
     meta: { noviceFriendly: true }
   },
 
-  // ─── 4. Compliance Requirements (conditional) ─────────────────────────────────────────────────
+  // ─── 5. Compliance Requirements (conditional) ─────────────────────────────────────────────────
   {
     id: 'compliance-needs',
     title: 'Compliance requirements',
@@ -127,7 +313,7 @@ export const assessmentQuestions: AssessmentQuestion[] = [
     }
   },
 
-  // ─── 5. Investment Flexibility ─────────────────────────────────────────────────
+  // ─── 6. Investment Flexibility ─────────────────────────────────────────────────
   {
     id: 'budget-flexibility',
     title: 'Investment Flexibility',
@@ -145,7 +331,7 @@ export const assessmentQuestions: AssessmentQuestion[] = [
     meta: { noviceFriendly: true }
   },
 
-// ─── 6. Implementation Timeline ────────────────────────────────────────────────
+// ─── 7. Implementation Timeline ────────────────────────────────────────────────
 {
   id: 'urgency-timeline',
   title: 'Implementation timeline',
@@ -166,7 +352,7 @@ export const assessmentQuestions: AssessmentQuestion[] = [
   meta: { noviceFriendly: true }
 },
 
-  // ─── 7. Primary Threat Concerns (expert/intermediate only) ───────────────────────────────────────────────
+  // ─── 8. Primary Threat Concerns (expert/intermediate only) ───────────────────────────────────────────────
   {
     id: 'threat-priorities',
     title: 'Primary Threat Concerns',
@@ -192,7 +378,7 @@ export const assessmentQuestions: AssessmentQuestion[] = [
     }
   },
 
-  // ─── 8. Service Delivery Preferences ─────────────────────────────────────────
+  // ─── 9. Service Delivery Preferences ─────────────────────────────────────────
   {
     id: 'delivery-preferences',
     title: 'Service Delivery Preferences',
@@ -212,7 +398,7 @@ export const assessmentQuestions: AssessmentQuestion[] = [
     meta: { noviceFriendly: true }
   },
 
-  // ─── 9. Enterprise-specific questions (conditional) ─────────────────────────────────────────
+  // ─── 10. Enterprise-specific questions (conditional) ─────────────────────────────────────────
   {
     id: 'enterprise-complexity',
     title: 'Enterprise complexity factors',
@@ -236,7 +422,7 @@ export const assessmentQuestions: AssessmentQuestion[] = [
     }
   },
 
-  // ─── 10. Startup-specific questions (conditional) ─────────────────────────────────────────
+  // ─── 11. Startup-specific questions (conditional) ─────────────────────────────────────────
   {
     id: 'startup-priorities',
     title: 'Startup Security Priorities',
