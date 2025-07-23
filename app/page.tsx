@@ -40,7 +40,7 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <Image
-                src="/HancoCyber-White-landscape 375.png"
+                src="/HancoCyber-White-landscape-375.png"
                 alt="Hanco Cyber"
                 width={180}
                 height={45}
@@ -213,7 +213,7 @@ export default function Home() {
             <div>
               <div className="flex items-center space-x-3 mb-4">
                 <Image
-                  src="/HancoCyber-White-landscape 375.png"
+                  src="/HancoCyber-White-landscape-375.png"
                   alt="Hanco Cyber"
                   width={150}
                   height={38}
