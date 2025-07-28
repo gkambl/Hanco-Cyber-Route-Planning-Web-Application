@@ -1,972 +1,644 @@
-import { AssessmentQuestion, BranchingCondition } from './assessment-config';
+// lib/assessment-config.ts
 
-export interface AssessmentResponse {
-  questionId: string;
-  selectedOptions: string[];
-  sliderValue?: number;
-  textValue?: string;
-}
-
-export interface RiskScore {
-  overall: number;
-  category: 'Low' | 'Medium' | 'High' | 'Critical';
-  breakdown: {
-    technical: number;
-    operational: number;
-    compliance: number;
-    financial: number;
-  };
-  trend: 'improving' | 'stable' | 'worsening';
-  confidence: number;
-}
-
-export interface ComplianceGap {
-  framework: string;
-  coverage: number;
-  missing: string[];
-  priority: 'Low' | 'Medium' | 'High';
-}
-
-export interface ServiceRecommendation {
+export interface AssessmentOption {
   id: string;
-  name: string;
+  label: string;
+  value: string | number;
+  riskMultiplier: number;
+  tooltip?: string;
+  riskImpact?: 'low' | 'medium' | 'high' | 'critical';
+}
+
+export interface BranchingCondition {
+  questionId: string;
+  operator: 'includes' | 'excludes' | 'equals' | 'greaterThan' | 'lessThan';
+  value: string | number;
+}
+
+export interface AssessmentQuestion {
+  id: string;
+  title: string;
   description: string;
-  priority: 'Essential' | 'Recommended' | 'Optional';
-  timeframe: string;
-  benefits: string[];
-  scalingOptions: string[];
-  technicalDetails: string[];
-  pricingEstimate: {
-    range: string;
-    model: string;
-    factors: string[];
-  };
-  hancoAdvantage: string[];
-  addressedRisks: string[];
-  implementation: {
-    phase1: string;
-    phase2: string;
-    phase3?: string;
+  type: 'multiSelect' | 'singleSelect' | 'slider' | 'text';
+  tooltip?: string;
+  required: boolean;
+  weight: number;
+  options?: AssessmentOption[];
+  meta?: {
+    noviceFriendly?: boolean;
+    expertOnly?: boolean;
+    showIf?: BranchingCondition[];
+    hideIf?: BranchingCondition[];
+    industrySpecific?: string[];
+    companySize?: string[];
+    riskThreshold?: number;
   };
 }
 
-export interface ROIModel {
-  investmentRange: string;
-  estimatedLossPrevention: number;
-  paybackPeriod: string;
-  riskReduction: number;
-  complianceComplexityPenalty?: {
-    isApplicable: boolean;
-    description: string;
-    additionalCost: number;
-    efficiencyLoss: number;
-  };
-}
-
-export interface AssessmentResults {
-  riskScore: RiskScore;
-  complianceGaps: ComplianceGap[];
-  serviceRecommendations: ServiceRecommendation[];
-  roiModel: ROIModel;
-  threatProfile: string[];
-  benchmarkData: {
-    industryAverage: number;
-    peerComparison: string;
-  };
-}
-
-// Currency conversion rates (approximate, for demo purposes)
-const CURRENCY_RATES = {
-  gbp: 1,
-  usd: 1.27,
-  eur: 1.17,
-  cad: 1.71,
-  aud: 1.93
-};
-
-const CURRENCY_SYMBOLS = {
-  gbp: '£',
-  usd: '$',
-  eur: '€',
-  cad: 'C$',
-  aud: 'A$'
-};
-
-export function formatCurrency(amount: number, currency: string = 'gbp'): string {
-  const rate = CURRENCY_RATES[currency as keyof typeof CURRENCY_RATES] || 1;
-  const symbol = CURRENCY_SYMBOLS[currency as keyof typeof CURRENCY_SYMBOLS] || '£';
-  const convertedAmount = Math.round(amount * rate);
-  return `${symbol}${convertedAmount.toLocaleString()}`;
-}
-
-export function formatCurrencyRange(minAmount: number, maxAmount: number, currency: string = 'gbp'): string {
-  const rate = CURRENCY_RATES[currency as keyof typeof CURRENCY_RATES] || 1;
-  const symbol = CURRENCY_SYMBOLS[currency as keyof typeof CURRENCY_SYMBOLS] || '£';
-  const convertedMin = Math.round(minAmount * rate);
-  const convertedMax = Math.round(maxAmount * rate);
-  return `${symbol}${convertedMin.toLocaleString()}-${symbol}${convertedMax.toLocaleString()}`;
-}
-
-/** Branching logic **/
-export function shouldShowQuestion(
-  question: AssessmentQuestion,
-  responses: AssessmentResponse[],
-  proficiency: 'novice' | 'intermediate' | 'expert'
-): boolean {
-  if (question.id === 'currency-preference' || question.id === 'user-proficiency') return true;
-  if (proficiency === 'novice' && question.meta?.expertOnly) return false;
-  if (proficiency === 'novice' && !question.meta?.noviceFriendly && !question.meta?.showIf) return false;
-  if (proficiency === 'intermediate' && question.meta?.expertOnly) return false;
-
-  if (question.meta?.hideIf) {
-    for (const cond of question.meta.hideIf)
-      if (evaluateCondition(cond, responses)) return false;
-  }
-  if (question.meta?.showIf) {
-    return question.meta.showIf.some(cond => evaluateCondition(cond, responses));
-  }
-  return true;
-}
-
-function evaluateCondition(cond: BranchingCondition, responses: AssessmentResponse[]): boolean {
-  const resp = responses.find(r => r.questionId === cond.questionId);
-  if (!resp) return false;
-  switch (cond.operator) {
-    case 'includes':    return resp.selectedOptions.includes(cond.value as string);
-    case 'excludes':    return !resp.selectedOptions.includes(cond.value as string);
-    case 'equals':      return resp.selectedOptions[0] === cond.value || resp.sliderValue === cond.value;
-    case 'greaterThan': return (resp.sliderValue||0) > (cond.value as number);
-    case 'lessThan':    return (resp.sliderValue||0) < (cond.value as number);
-    default:            return false;
-  }
-}
-
-/** Live risk calc **/
-export function calculateLiveRiskScore(
-  responses: AssessmentResponse[],
-  questions: AssessmentQuestion[]
-): { score: number; impact: 'low'|'medium'|'high'|'critical'; trend: 'up'|'down'|'stable' } {
-  const profResp = responses.find(r => r.questionId==='user-proficiency');
-  const proficiency = profResp?.selectedOptions[0] as 'novice'|'intermediate'|'expert' || 'intermediate';
-  const visible = questions.filter(q => shouldShowQuestion(q, responses, proficiency));
-
-  let total=0, max=0;
-  let lastImpact: 'low'|'medium'|'high'|'critical' = 'low';
-
-  for (const r of responses) {
-    const q = visible.find(v => v.id===r.questionId);
-    if (!q || q.id === 'currency-preference') continue;
-    let qScore=0, qMax=q.weight*100;
-
-    if (q.type==='slider' && r.sliderValue!==undefined) {
-      qScore = (100-r.sliderValue)*q.weight;
-      const opt = q.options?.find(o=>Math.abs((o.value as number)-r.sliderValue!)<=12.5);
-      if (opt) lastImpact = opt.riskImpact||'medium';
-    } else if (q.options) {
-      for (const sel of r.selectedOptions) {
-        const opt = q.options.find(o=>o.id===sel);
-        if (opt) {
-          qScore += opt.riskMultiplier*q.weight*20;
-          lastImpact = opt.riskImpact||'medium';
-        }
+export const assessmentQuestions: AssessmentQuestion[] = [
+  // ─── 0. CURRENCY PREFERENCE ─────────────────────────────────────────────────────
+  {
+    id: 'currency-preference',
+    title: 'What currency would you like to see pricing in?',
+    description: 'All pricing estimates will be shown in your preferred currency.',
+    type: 'singleSelect',
+    required: true,
+    weight: 0,
+    options: [
+      {
+        id: 'gbp',
+        label: 'British Pounds (£)',
+        value: 'gbp',
+        riskMultiplier: 0,
+        tooltip: 'UK Pounds Sterling',
+        riskImpact: 'low'
+      },
+      {
+        id: 'usd',
+        label: 'US Dollars ($)',
+        value: 'usd',
+        riskMultiplier: 0,
+        tooltip: 'United States Dollars',
+        riskImpact: 'low'
+      },
+      {
+        id: 'eur',
+        label: 'Euros (€)',
+        value: 'eur',
+        riskMultiplier: 0,
+        tooltip: 'European Union Euros',
+        riskImpact: 'low'
+      },
+      {
+        id: 'cad',
+        label: 'Canadian Dollars (C$)',
+        value: 'cad',
+        riskMultiplier: 0,
+        tooltip: 'Canadian Dollars',
+        riskImpact: 'low'
+      },
+      {
+        id: 'aud',
+        label: 'Australian Dollars (A$)',
+        value: 'aud',
+        riskMultiplier: 0,
+        tooltip: 'Australian Dollars',
+        riskImpact: 'low'
       }
-    }
+    ],
+    meta: { noviceFriendly: true }
+  },
 
-    total += qScore;
-    max   += qMax;
-  }
-
-  const norm = max>0?Math.min(100,(total/max)*100):0;
-  let impact: 'low'|'medium'|'high'|'critical';
-  if (norm<=25) impact='low';
-  else if (norm<=50) impact='medium';
-  else if (norm<=75) impact='high';
-  else impact='critical';
-
-  let trend: 'up'|'down'|'stable' = 'stable';
-  if (lastImpact==='critical'||lastImpact==='high') trend='up';
-  else if (lastImpact==='low') trend='down';
-
-  return { score: Math.round(norm), impact, trend };
-}
-
-/** Full risk calc **/
-export function calculateRiskScore(
-  responses: AssessmentResponse[],
-  questions: AssessmentQuestion[]
-): RiskScore {
-  const profResp = responses.find(r=>r.questionId==='user-proficiency');
-  const proficiency = profResp?.selectedOptions[0] as 'novice'|'intermediate'|'expert' || 'intermediate';
-  const mult = proficiency==='expert'?1.2:proficiency==='novice'?0.8:1;
-  const visible = questions.filter(q=>shouldShowQuestion(q,responses,proficiency));
-
-  let total=0, max=0, answered=0, securityControlsBonus=0;
-  const cats = { technical:0, operational:0, compliance:0, financial:0 };
-
-  for (const r of responses) {
-    const q = visible.find(v=>v.id===r.questionId);
-    if (!q || q.id === 'currency-preference') continue;
-    answered++;
-    let qScore=0, qMax=q.weight*100;
-
-    // Handle security controls with negative risk multipliers (bonuses)
-    if (q.id === 'current-security-controls') {
-      for (const sel of r.selectedOptions) {
-        const opt = q.options?.find(o=>o.id===sel);
-        if (opt && opt.riskMultiplier < 0) {
-          securityControlsBonus += Math.abs(opt.riskMultiplier) * q.weight * 20;
-        } else if (opt) {
-          qScore += opt.riskMultiplier * q.weight * 20;
-        }
+  // ─── 1. USER PROFICIENCY ─────────────────────────────────────────────────────
+  {
+    id: 'user-proficiency',
+    title: 'How would you describe your cyber security knowledge?',
+    description: 'This helps us tailor the assessment complexity to your expertise level.',
+    type: 'singleSelect',
+    required: true,
+    weight: 0,
+    options: [
+      {
+        id: 'novice',
+        label: "I'm new to cyber security",
+        value: 'novice',
+        riskMultiplier: 0,
+        tooltip: "You'll see essential, high-level questions focused on business impact",
+        riskImpact: 'low'
+      },
+      {
+        id: 'intermediate',
+        label: 'I have some experience',
+        value: 'intermediate',
+        riskMultiplier: 0,
+        tooltip: "You'll see most questions, balanced between technical and business",
+        riskImpact: 'low'
+      },
+      {
+        id: 'expert',
+        label: "I'm a cyber security professional",
+        value: 'expert',
+        riskMultiplier: 0,
+        tooltip: "You'll see all questions, including deep technical detail",
+        riskImpact: 'low'
       }
-    } else if (q.type==='slider'&&r.sliderValue!==undefined) {
-    }
-    if (q.type==='slider'&&r.sliderValue!==undefined) {
-      qScore=(100-r.sliderValue)*q.weight;
-    } else if (q.options) {
-      for (const sel of r.selectedOptions) {
-        const opt=q.options.find(o=>o.id===sel);
-        if (opt) qScore += opt.riskMultiplier*q.weight*20;
-      }
-    }
+    ],
+    meta: { noviceFriendly: true }
+  },
 
-    // Enhanced incident history weighting
-    if (q.id === 'security-incidents') {
-      const hasSerious = r.selectedOptions.some(opt => 
-        ['ransomware-attack', 'data-breach', 'supply-chain-compromise'].includes(opt)
-      );
-      if (hasSerious) qScore *= 1.5; // Increase weight for serious past incidents
-    }
+  // ─── 2.5. Current Security Controls Assessment ─────────────────────────────────
+  {
+    id: 'current-security-controls',
+    title: 'Current Security Controls',
+    description: 'Which security controls do you currently have in place?',
+    type: 'multiSelect',
+    tooltip: 'Helps us understand your existing security posture more accurately',
+    required: true,
+    weight: 2.0,
+    options: [
+      { id: 'endpoint-protection', label: 'Endpoint Protection (Antivirus/EDR)', value: 'endpoint-protection', riskMultiplier: -0.3, tooltip: 'Reduces malware and endpoint threats', riskImpact: 'low' },
+      { id: 'firewall-configured', label: 'Properly Configured Firewall', value: 'firewall-configured', riskMultiplier: -0.2, tooltip: 'Network perimeter protection', riskImpact: 'low' },
+      { id: 'mfa-enabled', label: 'Multi-Factor Authentication', value: 'mfa-enabled', riskMultiplier: -0.4, tooltip: 'Significantly reduces account compromise', riskImpact: 'low' },
+      { id: 'backup-strategy', label: 'Regular Backups (Tested)', value: 'backup-strategy', riskMultiplier: -0.3, tooltip: 'Critical for ransomware recovery', riskImpact: 'low' },
+      { id: 'patch-management', label: 'Automated Patch Management', value: 'patch-management', riskMultiplier: -0.3, tooltip: 'Reduces vulnerability exposure', riskImpact: 'low' },
+      { id: 'security-monitoring', label: 'Security Monitoring/SIEM', value: 'security-monitoring', riskMultiplier: -0.4, tooltip: 'Early threat detection', riskImpact: 'low' },
+      { id: 'employee-training', label: 'Regular Security Training', value: 'employee-training', riskMultiplier: -0.2, tooltip: 'Reduces human error risks', riskImpact: 'low' },
+      { id: 'incident-response-plan', label: 'Incident Response Plan', value: 'incident-response-plan', riskMultiplier: -0.2, tooltip: 'Faster recovery from incidents', riskImpact: 'low' },
+      { id: 'vulnerability-scanning', label: 'Regular Vulnerability Scanning', value: 'vulnerability-scanning', riskMultiplier: -0.3, tooltip: 'Proactive vulnerability management', riskImpact: 'low' },
+      { id: 'email-security', label: 'Advanced Email Security', value: 'email-security', riskMultiplier: -0.2, tooltip: 'Blocks phishing and malware', riskImpact: 'low' },
+      { id: 'network-segmentation', label: 'Network Segmentation', value: 'network-segmentation', riskMultiplier: -0.3, tooltip: 'Limits breach impact', riskImpact: 'low' },
+      { id: 'privileged-access', label: 'Privileged Access Management', value: 'privileged-access', riskMultiplier: -0.4, tooltip: 'Controls admin access', riskImpact: 'low' },
+      { id: 'minimal-controls', label: 'Minimal/Basic Controls Only', value: 'minimal-controls', riskMultiplier: 1.5, tooltip: 'High risk exposure', riskImpact: 'critical' }
+    ],
+    meta: { noviceFriendly: true }
+  },
 
-    qScore *= mult; qMax *= mult;
-    total+=qScore; max+=qMax;
+  // ─── 2.6. Data Sensitivity Assessment ─────────────────────────────────────
+  {
+    id: 'data-sensitivity',
+    title: 'Data Sensitivity & Volume',
+    description: 'What types of sensitive data does your organisation handle?',
+    type: 'multiSelect',
+    tooltip: 'Different data types have different risk profiles and regulatory requirements',
+    required: true,
+    weight: 1.8,
+    options: [
+      { id: 'customer-pii', label: 'Customer Personal Data (PII)', value: 'customer-pii', riskMultiplier: 1.4, tooltip: 'GDPR and privacy law implications', riskImpact: 'high' },
+      { id: 'payment-data', label: 'Payment Card Data', value: 'payment-data', riskMultiplier: 1.8, tooltip: 'PCI DSS compliance required', riskImpact: 'critical' },
+      { id: 'health-records', label: 'Health/Medical Records', value: 'health-records', riskMultiplier: 1.9, tooltip: 'HIPAA and strict privacy laws', riskImpact: 'critical' },
+      { id: 'financial-records', label: 'Financial Records', value: 'financial-records', riskMultiplier: 1.6, tooltip: 'Financial regulations and SOX', riskImpact: 'high' },
+      { id: 'intellectual-property', label: 'Intellectual Property/Trade Secrets', value: 'intellectual-property', riskMultiplier: 1.5, tooltip: 'Competitive advantage at risk', riskImpact: 'high' },
+      { id: 'government-data', label: 'Government/Classified Data', value: 'government-data', riskMultiplier: 2.0, tooltip: 'National security implications', riskImpact: 'critical' },
+      { id: 'employee-data', label: 'Employee HR Data', value: 'employee-data', riskMultiplier: 1.2, tooltip: 'Employment law and privacy', riskImpact: 'medium' },
+      { id: 'business-confidential', label: 'Business Confidential Data', value: 'business-confidential', riskMultiplier: 1.1, tooltip: 'Competitive information', riskImpact: 'medium' },
+      { id: 'public-data-only', label: 'Mostly Public Data', value: 'public-data-only', riskMultiplier: 0.7, tooltip: 'Lower sensitivity profile', riskImpact: 'low' }
+    ],
+    meta: { noviceFriendly: true }
+  },
 
-    // Enhanced categorization
-    switch(q.id) {
-      case 'cyber-maturity':
-      case 'threat-priorities':
-      case 'enterprise-complexity':
-      case 'current-security-controls':
-      case 'infrastructure-complexity':
-      case 'security-incidents':
-        cats.technical += qScore; break;
-      case 'org-profile':
-      case 'delivery-preferences':
-      case 'startup-priorities':
-      case 'data-sensitivity':
-        cats.operational += qScore; break;
-      case 'compliance-needs':
-        cats.compliance += qScore; break;
-      case 'budget-flexibility':
-      case 'urgency-timeline':
-        cats.financial += qScore; break;
-    }
-  }
-
-  // Apply security controls bonus
-  total = Math.max(0, total - securityControlsBonus);
-
-  const norm = max>0?Math.min(100,(total/max)*100):0;
-  let category: RiskScore['category'];
-  if (norm<=25) category='Low';
-  else if (norm<=50) category='Medium';
-  else if (norm<=75) category='High';
-  else category='Critical';
-
-  const completeness = visible.length>0?answered/visible.length:0;
-  const confidence = Math.round(completeness*100);
-
-  // Enhanced trend analysis
-  const mat = responses.find(r=>r.questionId==='cyber-maturity')?.selectedOptions||[];
-  const thr = responses.find(r=>r.questionId==='threat-priorities')?.selectedOptions||[];
-  const inc = responses.find(r=>r.questionId==='security-incidents')?.selectedOptions||[];
-  let trend: RiskScore['trend']='stable';
-  
-  if ((mat.includes('ad-hoc')||mat.includes('basic')) && thr.length>3) trend='worsening';
-  else if (inc.includes('ransomware-attack')||inc.includes('data-breach')) trend='worsening';
-  else if (mat.includes('advanced')||mat.includes('optimized')) trend='improving';
-  else if ((responses.find(r=>r.questionId==='current-security-controls')?.selectedOptions?.length ?? 0) > 6) trend='improving';
-
-  const slice = max*0.25;
-  return {
-    overall: Math.round(norm),
-    category,
-    breakdown: {
-      technical: Math.min(100, Math.round((cats.technical/slice)*100)),
-      operational: Math.min(100, Math.round((cats.operational/slice)*100)),
-      compliance: Math.min(100, Math.round((cats.compliance/slice)*100)),
-      financial: Math.min(100, Math.round((cats.financial/slice)*100)),
-    },
-    trend,
-    confidence
-  };
-}
-
-/** Compliance gaps **/
-export function analyzeComplianceGaps(responses: AssessmentResponse[]): ComplianceGap[] {
-  const resp = responses.find(r=>r.questionId==='compliance-needs');
-  if (!resp) return [];
-  const gaps: ComplianceGap[] = [];
-
-  for (const fw of resp.selectedOptions) {
-    let coverage=50, missing=['Security Framework','Monitoring','Documentation'], priority:ComplianceGap['priority']='Medium';
-    switch(fw) {
-      case 'gdpr':
-        coverage=55; priority='High';
-        missing=['Data Protection Impact Assessments','Breach Notification Procedures','Privacy by Design'];
-        break;
-      case 'nis2':
-        coverage=35; priority='High';
-        missing=['Incident Reporting','Supply Chain Security','Governance Framework'];
-        break;
-      case 'iso27001':
-        coverage=60; priority='Medium';
-        missing=['Risk Assessment','Security Policies','Audit Framework'];
-        break;
-      case 'pci-dss':
-        coverage=45; priority='High';
-        missing=['Cardholder Data Protection','Network Segmentation','Regular Testing'];
-        break;
-    }
-    gaps.push({ framework: fw.toUpperCase(), coverage, missing, priority });
-  }
-
-  return gaps;
-}
-
-/** Enhanced service recommendations **/
-export function generateServiceRecommendations(
-  responses: AssessmentResponse[],
-  riskScore: RiskScore
-): ServiceRecommendation[] {
-  const recs: ServiceRecommendation[] = [];
-  const org = responses.find(r=>r.questionId==='org-profile');
-  const industry = responses.find(r=>r.questionId==='industry-vertical');
-  const maturity = responses.find(r=>r.questionId==='cyber-maturity');
-  const threats = responses.find(r=>r.questionId==='threat-priorities');
-  const compliance = responses.find(r=>r.questionId==='compliance-needs');
-  const urgency = responses.find(r=>r.questionId==='urgency-timeline');
-  const budget = responses.find(r=>r.questionId==='budget-flexibility');
-  const currency = responses.find(r=>r.questionId==='currency-preference')?.selectedOptions[0] || 'gbp';
-  
-  const isStartup = org?.selectedOptions.includes('startup');
-  const isEnt = org?.selectedOptions.includes('enterprise')||org?.selectedOptions.includes('multinational');
-  const isFinancial = industry?.selectedOptions.includes('financial');
-  const isHealthcare = industry?.selectedOptions.includes('healthcare');
-  const hasBasicMaturity = maturity?.selectedOptions.includes('basic') || maturity?.selectedOptions.includes('developing');
-  const hasRansomwareConcern = threats?.selectedOptions.includes('ransomware');
-  const hasImmediateThreat = urgency?.selectedOptions.includes('immediate-threat');
-  const hasComplianceDeadline = urgency?.selectedOptions.includes('compliance-deadline');
-  const isConservativeBudget = budget?.sliderValue !== undefined && budget.sliderValue <= 25;
-  const hasLimitedBudget = urgency?.selectedOptions.includes('no-urgency') || isStartup;
-
-  // 1. Cybersecurity Advisor - For budget-conscious organisations
-  if (isConservativeBudget || hasLimitedBudget || (isStartup && riskScore.overall < 70)) {
-    // Tailor service based on company size
-    let advisorConfig = {
-      name: 'Personal Cybersecurity Advisor',
-      sessionLength: '60-minute',
-      basePrice: 299,
-      features: [
-        'One high-impact monthly session with cybersecurity expert',
-        'Practical security improvement recommendations per session',
-        'Monthly security snapshot report including dark web monitoring',
-        'Industry-tailored insights and threat intelligence',
-        'Direct access to advisor via email between sessions'
-      ],
-      technicalDetails: [
-        'Monthly 60-minute strategic consultation sessions',
-        'Dark web monitoring for leaked credentials and data',
-        'Surface web monitoring for brand and domain abuse',
-        'Quarterly security posture assessment',
-        'Custom security roadmap development',
-        'Vendor evaluation and procurement guidance',
-        'Incident response planning and tabletop exercises'
-      ],
-      scalingOptions: [
-        `Basic Advisor - ${formatCurrency(299, currency)}/month`,
-        `Premium Advisor (bi-weekly sessions) - ${formatCurrency(499, currency)}/month`,
-        `Enterprise Advisory (weekly + team access) - ${formatCurrency(899, currency)}/month`
+  // ─── 2.7. IT Infrastructure Complexity ─────────────────────────────────────
+  {
+    id: 'infrastructure-complexity',
+    title: 'IT Infrastructure Complexity',
+    description: 'Describe your current IT infrastructure setup',
+    type: 'multiSelect',
+    tooltip: 'Infrastructure complexity directly impacts security risk and implementation approach',
+    required: true,
+    weight: 1.6,
+    options: [
+      { id: 'cloud-native', label: 'Cloud-Native (AWS/Azure/GCP)', value: 'cloud-native', riskMultiplier: 1.0, tooltip: 'Modern but needs cloud security expertise', riskImpact: 'medium' },
+      { id: 'hybrid-cloud', label: 'Hybrid Cloud Environment', value: 'hybrid-cloud', riskMultiplier: 1.3, tooltip: 'Complex integration challenges', riskImpact: 'medium' },
+      { id: 'on-premise-modern', label: 'Modern On-Premise Infrastructure', value: 'on-premise-modern', riskMultiplier: 1.1, tooltip: 'Controlled but needs maintenance', riskImpact: 'medium' },
+      { id: 'legacy-systems', label: 'Legacy Systems (10+ years)', value: 'legacy-systems', riskMultiplier: 1.8, tooltip: 'High risk from outdated security', riskImpact: 'critical' },
+      { id: 'mixed-environment', label: 'Mixed Legacy and Modern', value: 'mixed-environment', riskMultiplier: 1.4, tooltip: 'Integration and compatibility issues', riskImpact: 'high' },
+      { id: 'saas-heavy', label: 'SaaS-Heavy Environment', value: 'saas-heavy', riskMultiplier: 1.1, tooltip: 'Third-party dependency risks', riskImpact: 'medium' },
+      { id: 'iot-devices', label: 'IoT/Connected Devices', value: 'iot-devices', riskMultiplier: 1.5, tooltip: 'Expanded attack surface', riskImpact: 'high' },
+      { id: 'mobile-first', label: 'Mobile-First Operations', value: 'mobile-first', riskMultiplier: 1.2, tooltip: 'Mobile security challenges', riskImpact: 'medium' }
+    ],
+    meta: { 
+      hideIf: [
+        { questionId: 'user-proficiency', operator: 'equals', value: 'novice' }
       ]
-    };
-
-    // Customize based on organization size
-    if (isStartup) {
-      advisorConfig = {
-        ...advisorConfig,
-        name: 'Startup Cybersecurity Advisor',
-        sessionLength: '45-minute',
-        basePrice: 199,
-        features: [
-          'One focused 45-minute monthly session with startup security expert',
-          'Growth-stage security recommendations per session',
-          'Monthly security snapshot report with startup-specific threats',
-          'Investor-ready security documentation guidance',
-          'Direct access to advisor via email and Slack integration'
-        ],
-        technicalDetails: [
-          'Monthly 45-minute startup-focused consultation sessions',
-          'Dark web monitoring for company domain and founder credentials',
-          'Basic security posture assessment',
-          'Investor due diligence preparation',
-          'Cost-effective security tool recommendations',
-          'Compliance readiness planning',
-          'Security culture development for growing teams'
-        ],
-        scalingOptions: [
-          `Startup Basic - ${formatCurrency(199, currency)}/month`,
-          `Startup Growth (bi-weekly) - ${formatCurrency(349, currency)}/month`,
-          `Startup Scale (weekly) - ${formatCurrency(599, currency)}/month`
-        ]
-      };
-    } else if (isEnt) {
-      advisorConfig = {
-        ...advisorConfig,
-        name: 'Enterprise Cybersecurity Advisor',
-        sessionLength: '90-minute',
-        basePrice: 499,
-        features: [
-          'One comprehensive 90-minute monthly session with senior security advisor',
-          'Enterprise-grade security strategy recommendations per session',
-          'Monthly executive security dashboard with advanced threat intelligence',
-          'Board-level security reporting and presentation support',
-          'Direct access to advisor team via dedicated channels'
-        ],
-        technicalDetails: [
-          'Monthly 90-minute enterprise strategic consultation sessions',
-          'Advanced threat intelligence and dark web monitoring',
-          'Executive security dashboard and KPI tracking',
-          'Multi-location security posture assessment',
-          'Enterprise security architecture guidance',
-          'Vendor risk management and procurement support',
-          'Crisis communication and incident response planning'
-        ],
-        scalingOptions: [
-          `Enterprise Standard - ${formatCurrency(499, currency)}/month`,
-          `Enterprise Premium (bi-weekly) - ${formatCurrency(799, currency)}/month`,
-          `Enterprise Dedicated (weekly + team) - ${formatCurrency(1299, currency)}/month`
-        ]
-      };
     }
+  },
 
-    recs.push({
-      id: 'cybersecurity-advisor',
-      name: advisorConfig.name,
-      description: `Monthly strategic cybersecurity guidance with a dedicated advisor. Perfect for ${isStartup ? 'growing startups' : isEnt ? 'enterprise organizations' : 'organizations'} that need expert direction but want to maintain control over implementation.`,
-      priority: 'Recommended',
-      timeframe: '1 week to assign advisor and begin',
-      benefits: advisorConfig.features,
-      technicalDetails: advisorConfig.technicalDetails,
-      pricingEstimate: {
-        range: `${formatCurrency(advisorConfig.basePrice, currency)}/month (First month free)`,
-        model: 'Fixed monthly fee with no long-term contract',
-        factors: [
-          'No setup fees or hidden costs',
-          'Cancel anytime with 30 days notice',
-          'Additional ad-hoc sessions available',
-          'Includes all monitoring and reporting',
-          'No per-user or per-device charges'
-        ]
-      },
-      hancoAdvantage: [
-        `${isStartup ? 'Startup-focused' : isEnt ? 'Enterprise-grade' : 'Senior'} advisors with 15+ years experience, not junior consultants`,
-        `${isStartup ? 'Growth-stage' : isEnt ? 'Enterprise' : 'Industry'}-specific expertise across all major sectors`,
-        'No vendor bias - we recommend what\'s best for you, not what we sell',
-        'Direct relationship with your advisor, not a rotating team',
-        `Proven track record helping ${isStartup ? '50+ startups scale securely' : isEnt ? '100+ enterprises' : '200+ organisations'} improve security`,
-        'Emergency consultation available for urgent security matters'
-      ],
-      addressedRisks: [
-        `${isStartup ? 'Growth-stage' : isEnt ? 'Enterprise' : 'Strategic'} security planning and roadmap development`,
-        `${isStartup ? 'Cost-effective' : 'Budget-conscious'} security improvements with maximum ROI`,
-        `${isStartup ? 'Startup-relevant' : isEnt ? 'Enterprise-grade' : 'Proactive'} threat awareness and industry intelligence`,
-        `${isStartup ? 'Startup-friendly' : isEnt ? 'Enterprise' : 'Vendor'} selection and contract negotiation support`,
-        `${isStartup ? 'Investor-ready' : isEnt ? 'Board-level' : 'Compliance'} planning and gap identification`,
-        ...(isStartup ? ['Investor due diligence preparation', 'Security culture development for growing teams'] : []),
-        ...(isEnt ? ['Multi-location security coordination', 'Executive reporting and board presentations'] : [])
-      ],
-      scalingOptions: advisorConfig.scalingOptions,
-      implementation: {
-        phase1: `${isStartup ? 'Startup-focused advisor' : isEnt ? 'Senior enterprise advisor' : 'Advisor'} assignment, initial security assessment, relationship establishment`,
-        phase2: `${advisorConfig.sessionLength} strategic sessions, monitoring setup, roadmap development`,
-        phase3: `Ongoing advisory relationship, ${isStartup ? 'growth-aligned' : isEnt ? 'enterprise-grade' : 'continuous'} improvement, scaling as needed`
-      }
-    });
-  }
-
-  // 2. Managed SOC Services - Critical for high-risk scenarios
-  if (riskScore.overall > 60 || hasImmediateThreat || hasRansomwareConcern || riskScore.breakdown.technical > 70) {
-    recs.push({
-      id: 'managed-soc',
-      name: 'Managed SOC Services',
-      description: '24/7 Security Operations Centre with advanced threat detection, incident response, and continuous monitoring using SIEM, SOAR, and threat intelligence platforms.',
-      priority: 'Essential',
-      timeframe: hasImmediateThreat ? 'Emergency deployment (24-48 hours)' : '5-10 business days',
-      benefits: [
-        'Mean Time to Detection (MTTD) reduced to <15 minutes',
-        'Mean Time to Response (MTTR) reduced to <1 hour',
-        'Advanced persistent threat (APT) detection using behavioural analytics',
-        'Automated incident containment and forensic evidence preservation',
-        'Compliance reporting for GDPR Article 33, NIS2, and sector-specific requirements'
-      ],
-      technicalDetails: [
-        'Splunk Enterprise Security or Microsoft Sentinel SIEM deployment',
-        'Phantom/Demisto SOAR integration for automated response workflows',
-        'CrowdStrike Falcon or SentinelOne EDR endpoint protection',
-        'Network traffic analysis using Darktrace or ExtraHop',
-        'Threat intelligence feeds from Recorded Future and FireEye',
-        'Custom detection rules based on MITRE ATT&CK framework',
-        'Zero-trust network access (ZTNA) implementation'
-      ],
-      pricingEstimate: {
-        range: isStartup 
-          ? formatCurrencyRange(900, 2500, currency) + '/month'
-          : isEnt 
-          ? formatCurrencyRange(8000, 25000, currency) + '/month'
-          : formatCurrencyRange(2500, 8000, currency) + '/month',
-        model: 'Tiered service levels based on asset count and complexity',
-        factors: [
-          'Number of endpoints and servers monitored',
-          'Log volume and retention requirements',
-          'Compliance framework complexity',
-          'Custom integration requirements',
-          'Dedicated analyst allocation'
-        ]
-      },
-      hancoAdvantage: [
-        '95% client retention rate - we deliver measurable security improvements',
-        'UK-based SOC analysts with SC clearance available for government clients',
-        'Proprietary threat intelligence from 15+ years of incident response',
-        'No vendor lock-in - we use best-of-breed tools, not single-vendor stacks',
-        'Transparent pricing with no hidden costs for alert escalations',
-        'Direct access to senior analysts, not just tier-1 support'
-      ],
-      addressedRisks: [
-        `Technical Risk: ${riskScore.breakdown.technical}% → Reduced to <25%`,
-        'Advanced persistent threats and zero-day exploits',
-        'Insider threat detection through user behaviour analytics',
-        'Supply chain compromise detection',
-        'Ransomware prevention and rapid containment'
-      ],
-      scalingOptions: isStartup 
-        ? [
-          `SOC Lite (8×5 coverage) - ${formatCurrency(900, currency)}/month`,
-          `SOC Standard (24×7 coverage) - ${formatCurrency(2500, currency)}/month`,
-          `SOC Premium (dedicated analyst) - ${formatCurrency(4500, currency)}/month`
-        ]
-        : isEnt
-        ? [
-          `Enterprise SOC (multi-tenant) - ${formatCurrency(8000, currency)}/month`,
-          `Dedicated SOC (single-tenant) - ${formatCurrency(15000, currency)}/month`,
-          `White-label SOC (your branding) - ${formatCurrency(25000, currency)}/month`
-        ]
-        : [
-          `SME SOC Standard - ${formatCurrency(2500, currency)}/month`,
-          `SME SOC Premium - ${formatCurrency(4500, currency)}/month`,
-          `SME SOC Enterprise - ${formatCurrency(7000, currency)}/month`
-        ],
-      implementation: {
-        phase1: 'SIEM deployment, log source integration, baseline monitoring (Week 1-2)',
-        phase2: 'Custom detection rules, SOAR workflows, analyst training (Week 3-4)',
-        phase3: 'Advanced analytics, threat hunting, compliance reporting (Week 5-6)'
-      }
-    });
-  }
-
-  // 3. Vulnerability Management - Essential for most organisations
-  recs.push({
-    id: 'vulnerability-management',
-    name: 'Continuous Vulnerability Management',
-    description: 'Comprehensive vulnerability assessment and management using automated scanning, risk-based prioritisation, and guided remediation with integration into your existing DevOps pipeline.',
-    priority: riskScore.overall > 50 || hasBasicMaturity ? 'Essential' : 'Recommended',
-    timeframe: '1-2 weeks for initial deployment',
-    benefits: [
-      'Continuous asset discovery and vulnerability scanning',
-      'Risk-based prioritisation using CVSS 3.1 and business context',
-      'Automated patch management for critical vulnerabilities',
-      'DevSecOps integration with CI/CD pipeline security gates',
-      'Executive dashboards with trend analysis and KPI tracking'
+  // ─── 2.8. Previous Security Incidents ─────────────────────────────────────
+  {
+    id: 'security-incidents',
+    title: 'Previous Security Incidents',
+    description: 'Has your organisation experienced any security incidents in the past 2 years?',
+    type: 'multiSelect',
+    tooltip: 'Past incidents indicate current vulnerabilities and help prioritise defenses',
+    required: true,
+    weight: 2.2,
+    options: [
+      { id: 'no-incidents', label: 'No Known Security Incidents', value: 'no-incidents', riskMultiplier: 0.8, tooltip: 'Good track record or undetected issues', riskImpact: 'low' },
+      { id: 'phishing-attempts', label: 'Phishing/Email Attacks', value: 'phishing-attempts', riskMultiplier: 1.3, tooltip: 'Common attack vector, needs training', riskImpact: 'medium' },
+      { id: 'malware-infection', label: 'Malware/Virus Infections', value: 'malware-infection', riskMultiplier: 1.5, tooltip: 'Endpoint security gaps', riskImpact: 'high' },
+      { id: 'data-breach', label: 'Data Breach/Unauthorized Access', value: 'data-breach', riskMultiplier: 2.0, tooltip: 'Serious security failure', riskImpact: 'critical' },
+      { id: 'ransomware-attack', label: 'Ransomware Attack', value: 'ransomware-attack', riskMultiplier: 2.2, tooltip: 'Critical business disruption', riskImpact: 'critical' },
+      { id: 'insider-incident', label: 'Insider Threat Incident', value: 'insider-incident', riskMultiplier: 1.7, tooltip: 'Internal controls needed', riskImpact: 'high' },
+      { id: 'ddos-attack', label: 'DDoS/Service Disruption', value: 'ddos-attack', riskMultiplier: 1.4, tooltip: 'Availability and resilience issues', riskImpact: 'medium' },
+      { id: 'supply-chain-compromise', label: 'Vendor/Supply Chain Compromise', value: 'supply-chain-compromise', riskMultiplier: 1.8, tooltip: 'Third-party risk management needed', riskImpact: 'high' },
+      { id: 'unsure-incidents', label: 'Unsure/No Monitoring in Place', value: 'unsure-incidents', riskMultiplier: 1.6, tooltip: 'Blind spots in security monitoring', riskImpact: 'high' }
     ],
-    technicalDetails: [
-      'Tenable.io or Qualys VMDR for comprehensive vulnerability scanning',
-      'Nessus Professional for authenticated scanning',
-      'Integration with Jira/ServiceNow for remediation tracking',
-      'API integration with AWS Security Hub, Azure Security Center',
-      'Custom vulnerability correlation and false positive reduction',
-      'Container and cloud-native security scanning (Twistlock/Prisma)',
-      'Web application security testing (OWASP ZAP, Burp Suite Enterprise)'
+    meta: { noviceFriendly: true }
+  },
+
+  // ─── 2.9. Company Size & Revenue (for better risk profiling) ─────────────────
+  {
+    id: 'company-size-revenue',
+    title: 'Company Size & Annual Revenue',
+    description: 'Help us understand your organization\'s scale for accurate risk assessment',
+    type: 'singleSelect',
+    tooltip: 'Company size affects threat exposure, regulatory requirements, and available resources',
+    required: true,
+    weight: 1.3,
+    options: [
+      { id: 'micro', label: 'Micro Business (<£100k revenue)', value: 'micro', riskMultiplier: 0.7, tooltip: 'Lower profile but limited security resources', riskImpact: 'low' },
+      { id: 'small', label: 'Small Business (£100k-£2M)', value: 'small', riskMultiplier: 0.9, tooltip: 'Growing visibility with basic security needs', riskImpact: 'medium' },
+      { id: 'medium', label: 'Medium Business (£2M-£25M)', value: 'medium', riskMultiplier: 1.2, tooltip: 'Attractive target with complex requirements', riskImpact: 'medium' },
+      { id: 'large', label: 'Large Business (£25M-£100M)', value: 'large', riskMultiplier: 1.5, tooltip: 'High-value target with regulatory scrutiny', riskImpact: 'high' },
+      { id: 'enterprise', label: 'Enterprise (£100M+)', value: 'enterprise', riskMultiplier: 1.8, tooltip: 'Prime target with complex global operations', riskImpact: 'critical' }
     ],
-    pricingEstimate: {
-      range: isStartup 
-        ? formatCurrencyRange(500, 1500, currency) + '/month'
-        : isEnt 
-        ? formatCurrencyRange(3000, 12000, currency) + '/month'
-        : formatCurrencyRange(1500, 4000, currency) + '/month',
-      model: 'Based on asset count and scanning frequency',
-      factors: [
-        'Number of IP addresses and domains',
-        'Frequency of scanning (weekly/daily)',
-        'Integration complexity',
-        'Remediation support level',
-        'Compliance reporting requirements'
+    meta: { noviceFriendly: true }
+  },
+
+  // ─── 2.10. Geographic Operations (for regulatory complexity) ─────────────────
+  {
+    id: 'geographic-operations',
+    title: 'Geographic Operations',
+    description: 'Where does your organization operate?',
+    type: 'multiSelect',
+    tooltip: 'Different regions have different regulatory requirements and threat landscapes',
+    required: true,
+    weight: 1.2,
+    options: [
+      { id: 'uk-only', label: 'UK Only', value: 'uk-only', riskMultiplier: 1.0, tooltip: 'UK regulations (GDPR, NIS2, Cyber Essentials)', riskImpact: 'medium' },
+      { id: 'eu-operations', label: 'European Union', value: 'eu-operations', riskMultiplier: 1.3, tooltip: 'GDPR, NIS2, and country-specific requirements', riskImpact: 'medium' },
+      { id: 'us-operations', label: 'United States', value: 'us-operations', riskMultiplier: 1.4, tooltip: 'State privacy laws, sector regulations', riskImpact: 'high' },
+      { id: 'apac-operations', label: 'Asia-Pacific', value: 'apac-operations', riskMultiplier: 1.2, tooltip: 'Diverse regulatory landscape', riskImpact: 'medium' },
+      { id: 'global-operations', label: 'Global Operations', value: 'global-operations', riskMultiplier: 1.6, tooltip: 'Complex multi-jurisdictional compliance', riskImpact: 'high' },
+      { id: 'emerging-markets', label: 'Emerging Markets', value: 'emerging-markets', riskMultiplier: 1.5, tooltip: 'Higher threat environment', riskImpact: 'high' }
+    ],
+    meta: { 
+      hideIf: [
+        { questionId: 'user-proficiency', operator: 'equals', value: 'novice' }
       ]
-    },
-    hancoAdvantage: [
-      'Proprietary risk scoring algorithm that reduces false positives by 60%',
-      'Direct integration with 50+ security tools and platforms',
-      'Dedicated vulnerability researchers providing zero-day intelligence',
-      'Automated remediation scripts for common vulnerabilities',
-      'Compliance mapping for PCI DSS, ISO 27001, NIST frameworks',
-      'No per-scan charges - unlimited scanning included'
-    ],
-    addressedRisks: [
-      `Technical Risk: Addresses ${Math.min(40, riskScore.breakdown.technical)}% of technical vulnerabilities`,
-      'Unpatched systems and software vulnerabilities',
-      'Misconfigurations in cloud and on-premise infrastructure',
-      'Web application security flaws (OWASP Top 10)',
-      'Container and Kubernetes security issues'
-    ],
-    scalingOptions: [
-      'Basic Scanning (monthly) - Lower tier pricing',
-      'Continuous Scanning (daily) - Mid tier pricing',
-      'Premium with Remediation Support - Top tier pricing'
-    ],
-    implementation: {
-      phase1: 'Asset discovery, initial vulnerability scan, baseline establishment',
-      phase2: 'Risk prioritisation, remediation planning, tool integration',
-      phase3: 'Continuous monitoring, automated reporting, process optimisation'
     }
-  });
+  },
 
-  // 4. Incident Response & Digital Forensics - Critical for high-risk or immediate threats
-  if (hasImmediateThreat || riskScore.overall > 70 || hasRansomwareConcern) {
-    recs.push({
-      id: 'incident-response',
-      name: 'Incident Response & Digital Forensics',
-      description: 'Rapid incident response capability with digital forensics, malware analysis, and business continuity support. Includes retainer-based emergency response and comprehensive incident management.',
-      priority: 'Essential',
-      timeframe: 'Emergency response: <2 hours | Full deployment: 1 week',
-      benefits: [
-        'Emergency response team activation within 2 hours',
-        'Digital forensics and malware analysis capabilities',
-        'Legal and regulatory compliance support',
-        'Business continuity and disaster recovery planning',
-        'Post-incident security improvements and lessons learned'
-      ],
-      technicalDetails: [
-        'SANS-certified incident response methodology (PICERL)',
-        'EnCase and Cellebrite digital forensics tools',
-        'Volatility Framework for memory analysis',
-        'YARA rules for malware detection and classification',
-        'Wireshark and NetworkMiner for network forensics',
-        'Incident response playbooks for common attack vectors',
-        'Secure evidence handling and chain of custody procedures'
-      ],
-      pricingEstimate: {
-        range: `${formatCurrencyRange(2000, 5000, currency)}/month retainer + ${formatCurrency(1500, currency)}/day activation`,
-        model: 'Retainer-based with activation fees',
-        factors: [
-          'Retainer level (response time SLA)',
-          'On-site vs remote response requirements',
-          'Forensics complexity and data volume',
-          'Legal and compliance support needs',
-          'Post-incident remediation scope'
-        ]
-      },
-      hancoAdvantage: [
-        'CREST-certified incident response team with 15+ years experience',
-        'Relationships with law enforcement and regulatory bodies',
-        'Proprietary threat intelligence from 500+ incident responses',
-        'No additional charges for weekend/holiday emergency response',
-        'Integrated legal support through partner law firms',
-        'Insurance claim support and documentation'
-      ],
-      addressedRisks: [
-        'Active security incidents and data breaches',
-        'Ransomware attacks and business disruption',
-        'Insider threats and data exfiltration',
-        'Advanced persistent threats (APTs)',
-        'Regulatory investigation and compliance violations'
-      ],
-      scalingOptions: [
-        `Basic Retainer (8-hour response) - ${formatCurrency(2000, currency)}/month`,
-        `Premium Retainer (2-hour response) - ${formatCurrency(3500, currency)}/month`,
-        `Enterprise Retainer (1-hour response) - ${formatCurrency(5000, currency)}/month`
-      ],
-      implementation: {
-        phase1: 'Incident response plan development, team training, tool deployment',
-        phase2: 'Tabletop exercises, process refinement, integration testing',
-        phase3: 'Continuous improvement, threat intelligence integration, automation'
-      }
-    });
+  // ─── 2. Organisation Profile & Scale ───────────────────────────────────────────
+  {
+    id: 'org-profile',
+    title: 'Organisation Profile & Scale',
+    description: 'Help us understand your organisation structure and operational scale',
+    type: 'multiSelect',
+    tooltip: 'Organisation size and complexity directly impact cyber security requirements and threat exposure',
+    required: true,
+    weight: 1.2,
+    options: [
+      { id: 'startup',       label: 'Startup (1-50 employees)',           value: 'startup',       riskMultiplier: 0.8, tooltip: 'Smaller attack surface but limited resources',         riskImpact: 'low' },
+      { id: 'sme',           label: 'SME (51-250 employees)',             value: 'sme',           riskMultiplier: 1.0, tooltip: 'Growing complexity needs structure',                  riskImpact: 'medium' },
+      { id: 'enterprise',    label: 'Enterprise (250+ employees)',        value: 'enterprise',    riskMultiplier: 1.4, tooltip: 'Complex infrastructure with many attack vectors',    riskImpact: 'high' },
+      { id: 'multinational', label: 'Multinational Corporation',          value: 'multinational', riskMultiplier: 1.8, tooltip: 'Global ops face diverse compliance requirements',     riskImpact: 'critical' },
+      { id: 'remote-first',  label: 'Remote-first Organisation',          value: 'remote-first',  riskMultiplier: 1.3, tooltip: 'Distributed workforce adds complexity',              riskImpact: 'medium' },
+      { id: 'hybrid-model',  label: 'Hybrid Work Model',                  value: 'hybrid-model',  riskMultiplier: 1.1, tooltip: 'Mixed environments need broad controls',             riskImpact: 'medium' }
+    ],
+    meta: { noviceFriendly: true }
+  },
+
+  // ─── 2.9. Company Size & Revenue (for better risk profiling) ─────────────────
+  {
+    id: 'technology-stack',
+    title: 'Primary Technology Stack',
+    description: 'What technology ecosystem does your organization primarily use?',
+    type: 'singleSelect',
+    tooltip: 'Technology choices affect security architecture and threat exposure',
+    required: true,
+    weight: 1.4,
+    options: [
+      { id: 'microsoft-stack', label: 'Microsoft Ecosystem (Office 365, Azure, Windows)', value: 'microsoft-stack', riskMultiplier: 1.0, tooltip: 'Integrated security but high-value target', riskImpact: 'medium' },
+      { id: 'google-workspace', label: 'Google Workspace & Cloud', value: 'google-workspace', riskMultiplier: 0.9, tooltip: 'Strong built-in security features', riskImpact: 'low' },
+      { id: 'aws-ecosystem', label: 'Amazon Web Services Ecosystem', value: 'aws-ecosystem', riskMultiplier: 1.1, tooltip: 'Powerful but complex security model', riskImpact: 'medium' },
+      { id: 'open-source-heavy', label: 'Open Source Heavy', value: 'open-source-heavy', riskMultiplier: 1.3, tooltip: 'Flexible but requires security expertise', riskImpact: 'medium' },
+      { id: 'saas-first', label: 'SaaS-First Approach', value: 'saas-first', riskMultiplier: 1.2, tooltip: 'Third-party dependency risks', riskImpact: 'medium' },
+      { id: 'custom-developed', label: 'Custom/In-House Development', value: 'custom-developed', riskMultiplier: 1.4, tooltip: 'Full control but security responsibility', riskImpact: 'high' },
+      { id: 'legacy-proprietary', label: 'Legacy Proprietary Systems', value: 'legacy-proprietary', riskMultiplier: 1.8, tooltip: 'Limited security updates and support', riskImpact: 'critical' }
+    ],
+    meta: { 
+      hideIf: [
+        { questionId: 'user-proficiency', operator: 'equals', value: 'novice' }
+      ]
+    }
+  },
+
+  // ─── 3. Industry Vertical ────────────────────────────────────────────────────────
+  {
+    id: 'industry-vertical',
+    title: 'Industry Vertical',
+    description: 'Select your primary industry sector',
+    type: 'singleSelect',
+    tooltip: 'Different industries face unique threat profiles and regulatory requirements',
+    required: true,
+    weight: 1.5,
+    options: [
+      { id: 'financial', label: 'Financial Services', value: 'financial', riskMultiplier: 2.0, tooltip: 'High-value target with strict regulations', riskImpact: 'critical' },
+      { id: 'healthcare', label: 'Healthcare & Life Sciences', value: 'healthcare', riskMultiplier: 1.9, tooltip: 'Patient data under GDPR & HIPAA', riskImpact: 'critical' },
+      { id: 'government', label: 'Government & Public Sector', value: 'government', riskMultiplier: 1.8, tooltip: 'National security & public data', riskImpact: 'critical' },
+      { id: 'technology', label: 'Technology & Software', value: 'technology', riskMultiplier: 1.6, tooltip: 'IP protection & supply chain risks', riskImpact: 'high' },
+      { id: 'manufacturing', label: 'Manufacturing & Industrial', value: 'manufacturing', riskMultiplier: 1.4, tooltip: 'OT/IT convergence risks', riskImpact: 'high' },
+      { id: 'retail', label: 'Retail & E-commerce', value: 'retail', riskMultiplier: 1.3, tooltip: 'Customer data & payment processing', riskImpact: 'medium' },
+      { id: 'education', label: 'Education', value: 'education', riskMultiplier: 1.1, tooltip: 'Student data & research IP', riskImpact: 'medium' },
+      { id: 'professional', label: 'Professional Services', value: 'professional', riskMultiplier: 1.0, tooltip: 'Client confidentiality focus', riskImpact: 'medium' },
+      { id: 'other', label: 'Other', value: 'other', riskMultiplier: 1.0, tooltip: 'Sector-specific risk model', riskImpact: 'medium' },
+    ],
+    meta: { noviceFriendly: true }
+  },
+
+  // ─── Industry-Specific Threat Concerns ─────────────────
+  {
+    id: 'industry-specific-threats',
+    title: 'Industry-Specific Security Concerns',
+    description: 'Which industry-specific threats are most concerning for your organization?',
+    type: 'multiSelect',
+    tooltip: 'Industry-specific threats require specialized security controls and expertise',
+    required: true,
+    weight: 1.5,
+    options: [
+      // Financial Services
+      { id: 'financial-fraud', label: 'Financial Fraud & Money Laundering', value: 'financial-fraud', riskMultiplier: 2.0, tooltip: 'Direct financial impact and regulatory scrutiny', riskImpact: 'critical' },
+      { id: 'trading-systems', label: 'Trading System Manipulation', value: 'trading-systems', riskMultiplier: 1.9, tooltip: 'Market manipulation and systemic risk', riskImpact: 'critical' },
+      
+      // Healthcare
+      { id: 'patient-data-breach', label: 'Patient Data Breaches', value: 'patient-data-breach', riskMultiplier: 1.8, tooltip: 'HIPAA violations and patient privacy', riskImpact: 'critical' },
+      { id: 'medical-device-security', label: 'Medical Device Security', value: 'medical-device-security', riskMultiplier: 1.7, tooltip: 'Life-critical system vulnerabilities', riskImpact: 'critical' },
+      
+      // Manufacturing
+      { id: 'industrial-espionage', label: 'Industrial Espionage', value: 'industrial-espionage', riskMultiplier: 1.6, tooltip: 'Trade secret and IP theft', riskImpact: 'high' },
+      { id: 'operational-disruption', label: 'Production Line Disruption', value: 'operational-disruption', riskMultiplier: 1.8, tooltip: 'Physical safety and business continuity', riskImpact: 'critical' },
+      
+      // Technology
+      { id: 'source-code-theft', label: 'Source Code & IP Theft', value: 'source-code-theft', riskMultiplier: 1.7, tooltip: 'Competitive advantage loss', riskImpact: 'high' },
+      { id: 'supply-chain-attacks', label: 'Software Supply Chain Attacks', value: 'supply-chain-attacks', riskMultiplier: 1.9, tooltip: 'Downstream customer impact', riskImpact: 'critical' },
+      
+      // Retail/E-commerce
+      { id: 'payment-fraud', label: 'Payment Processing Fraud', value: 'payment-fraud', riskMultiplier: 1.6, tooltip: 'PCI compliance and customer trust', riskImpact: 'high' },
+      { id: 'customer-data-theft', label: 'Customer Database Theft', value: 'customer-data-theft', riskMultiplier: 1.5, tooltip: 'GDPR fines and reputation damage', riskImpact: 'high' },
+      
+      // Professional Services
+      { id: 'client-confidentiality', label: 'Client Confidentiality Breaches', value: 'client-confidentiality', riskMultiplier: 1.4, tooltip: 'Professional liability and trust', riskImpact: 'medium' },
+      { id: 'regulatory-reporting', label: 'Regulatory Reporting Integrity', value: 'regulatory-reporting', riskMultiplier: 1.3, tooltip: 'Compliance and audit requirements', riskImpact: 'medium' },
+      
+      // General
+      { id: 'business-email-compromise', label: 'Business Email Compromise', value: 'business-email-compromise', riskMultiplier: 1.4, tooltip: 'Financial fraud via email', riskImpact: 'high' },
+      { id: 'cloud-misconfigurations', label: 'Cloud Security Misconfigurations', value: 'cloud-misconfigurations', riskMultiplier: 1.3, tooltip: 'Data exposure in cloud services', riskImpact: 'medium' }
+    ],
+    meta: {
+      showIf: [
+        { questionId: 'industry-vertical', operator: 'excludes', value: 'other' }
+      ]
+    }
+  },
+
+  // ─── 4. Current cyber security Maturity ─────────────────────────────────────────
+  {
+    id: 'cyber-maturity',
+    title: 'Cyber Security Programme Maturity',
+    description: 'How would you describe your organisation\'s current cyber security programme?',
+    type: 'singleSelect',
+    tooltip: 'This helps us understand your starting point and recommend appropriate next steps',
+    required: true,
+    weight: 1.8,
+    options: [
+      { id: 'ad-hoc', label: 'Ad-hoc (No formal programme)', value: 'ad-hoc', riskMultiplier: 2.8, tooltip: 'Individual tools without coordination', riskImpact: 'critical' },
+      { id: 'basic', label: 'Basic (Essential tools only)', value: 'basic', riskMultiplier: 2.3, tooltip: 'Antivirus, firewall, basic controls', riskImpact: 'critical' },
+      { id: 'developing', label: 'Developing (Policies + procedures)', value: 'developing', riskMultiplier: 1.9, tooltip: 'Documented processes, regular updates', riskImpact: 'high' },
+      { id: 'managed', label: 'Managed (Structured programme)', value: 'managed', riskMultiplier: 1.4, tooltip: 'Formal governance, monitoring, metrics', riskImpact: 'medium' },
+      { id: 'advanced', label: 'Advanced (Proactive defence)', value: 'advanced', riskMultiplier: 1.0, tooltip: 'Threat hunting, advanced analytics', riskImpact: 'low' },
+      { id: 'optimized', label: 'Optimised (Continuous improvement)', value: 'optimized', riskMultiplier: 0.7, tooltip: 'Mature programme with automation', riskImpact: 'low' },
+      { id: 'uncertain', label: 'Uncertain / Needs assessment', value: 'uncertain', riskMultiplier: 2.4, tooltip: 'Current state unknown', riskImpact: 'high' },
+    ],
+    meta: { noviceFriendly: true }
+  },
+
+  // ─── Security Team Capability ─────────────────
+  {
+    id: 'security-team-capability',
+    title: 'Security Team & Expertise',
+    description: 'What internal security capability does your organization have?',
+    type: 'singleSelect',
+    tooltip: 'Internal capability affects service delivery approach and support requirements',
+    required: true,
+    weight: 1.4,
+    options: [
+      { id: 'no-security-team', label: 'No Dedicated Security Personnel', value: 'no-security-team', riskMultiplier: 2.0, tooltip: 'Requires fully managed services', riskImpact: 'critical' },
+      { id: 'part-time-security', label: 'Part-time/Shared Security Responsibility', value: 'part-time-security', riskMultiplier: 1.6, tooltip: 'Limited security focus and expertise', riskImpact: 'high' },
+      { id: 'single-security-person', label: 'One Dedicated Security Person', value: 'single-security-person', riskMultiplier: 1.3, tooltip: 'Single point of failure, needs support', riskImpact: 'medium' },
+      { id: 'small-security-team', label: 'Small Security Team (2-5 people)', value: 'small-security-team', riskMultiplier: 1.0, tooltip: 'Good foundation, may need specialization', riskImpact: 'low' },
+      { id: 'mature-security-team', label: 'Mature Security Team (5+ specialists)', value: 'mature-security-team', riskMultiplier: 0.8, tooltip: 'Strong internal capability', riskImpact: 'low' },
+      { id: 'ciso-led-team', label: 'CISO-Led Security Organization', value: 'ciso-led-team', riskMultiplier: 0.6, tooltip: 'Executive-level security leadership', riskImpact: 'low' }
+    ],
+    meta: { 
+      hideIf: [
+        { questionId: 'user-proficiency', operator: 'equals', value: 'novice' }
+      ]
+    }
+  },
+
+  // ─── 5. Compliance Requirements (conditional) ─────────────────────────────────────────────────
+  {
+    id: 'compliance-needs',
+    title: 'Compliance requirements',
+    description: 'Select all regulatory frameworks that apply to your organisation',
+    type: 'multiSelect',
+    tooltip: 'Drives specific controls and audits',
+    required: true,
+    weight: 1.4,
+    options: [
+      { id: 'gdpr', label: 'GDPR', value: 'gdpr', riskMultiplier: 1.6, tooltip: 'EU data law with heavy fines', riskImpact: 'high' },
+      { id: 'nis2', label: 'NIS2 Directive', value: 'nis2', riskMultiplier: 1.8, tooltip: 'Critical infrastructure requirements', riskImpact: 'high' },
+      { id: 'iso27001', label: 'ISO 27001', value: 'iso27001', riskMultiplier: 1.2, tooltip: 'International standard', riskImpact: 'medium' },
+      { id: 'pci-dss', label: 'PCI DSS', value: 'pci-dss', riskMultiplier: 1.7, tooltip: 'Payment card industry standard', riskImpact: 'high' },
+      { id: 'sox', label: 'SOX', value: 'sox', riskMultiplier: 1.5, tooltip: 'Financial reporting controls', riskImpact: 'medium' },
+      { id: 'hipaa', label: 'HIPAA', value: 'hipaa', riskMultiplier: 1.8, tooltip: 'US healthcare data law', riskImpact: 'high' },
+      { id: 'cyber-essentials', label: 'Cyber Essentials', value: 'cyber-essentials', riskMultiplier: 1.1, tooltip: 'UK government certification', riskImpact: 'low' },
+      { id: 'nist', label: 'NIST Framework', value: 'nist', riskMultiplier: 1.3, tooltip: 'Widely adopted framework', riskImpact: 'medium' },
+      { id: 'none', label: 'No specific requirements', value: 'none', riskMultiplier: 1.0, tooltip: 'Use best practices & risk management', riskImpact: 'low' },
+    ],
+    meta: { 
+      hideIf: [
+        { questionId: 'user-proficiency', operator: 'equals', value: 'novice' }
+      ]
+    }
+  },
+
+  // ─── Audit Frequency ─────────────────
+  {
+    id: 'audit-frequency',
+    title: 'Audit & Compliance Frequency',
+    description: 'How often does your organization undergo security or compliance audits?',
+    type: 'singleSelect',
+    tooltip: 'Audit frequency affects ongoing compliance overhead and documentation requirements',
+    required: false,
+    weight: 1.3,
+    options: [
+      { id: 'no-audits', label: 'No Regular Audits', value: 'no-audits', riskMultiplier: 0.9, tooltip: 'Lower compliance overhead', riskImpact: 'low' },
+      { id: 'annual-audits', label: 'Annual Compliance Audits', value: 'annual-audits', riskMultiplier: 1.2, tooltip: 'Standard compliance requirements', riskImpact: 'medium' },
+      { id: 'quarterly-reviews', label: 'Quarterly Compliance Reviews', value: 'quarterly-reviews', riskMultiplier: 1.4, tooltip: 'High regulatory scrutiny', riskImpact: 'medium' },
+      { id: 'continuous-monitoring', label: 'Continuous Regulatory Monitoring', value: 'continuous-monitoring', riskMultiplier: 1.6, tooltip: 'Critical infrastructure or high-risk sector', riskImpact: 'high' },
+      { id: 'multiple-regulators', label: 'Multiple Regulatory Bodies', value: 'multiple-regulators', riskMultiplier: 1.8, tooltip: 'Complex overlapping requirements', riskImpact: 'high' }
+    ],
+    meta: {
+      showIf: [
+        { questionId: 'compliance-needs', operator: 'excludes', value: 'none' }
+      ]
+    }
+  },
+
+  // ─── 6. Investment Flexibility ─────────────────────────────────────────────────
+  {
+    id: 'budget-flexibility',
+    title: 'Investment Flexibility',
+    description: 'How flexible is your cyber security investment approach?',
+    type: 'slider',
+    tooltip: 'Helps us recommend appropriate service levels',
+    required: true,
+    weight: 1.0,
+    options: [
+      { id: 'conservative', label: 'Conservative', value: 25, riskMultiplier: 1.4, tooltip: 'Gradual rollout with ROI validation each phase', riskImpact: 'medium' },
+      { id: 'balanced', label: 'Balanced', value: 50, riskMultiplier: 1.0, tooltip: 'Balance between cost & risk mitigation', riskImpact: 'low' },
+      { id: 'aggressive', label: 'Aggressive', value: 75, riskMultiplier: 0.7, tooltip: 'Rapid deployment of comprehensive controls', riskImpact: 'low' },
+      { id: 'unlimited', label: 'Risk-driven', value: 100, riskMultiplier: 0.5, tooltip: 'Budget driven by risk appetite', riskImpact: 'low' },
+    ],
+    meta: { noviceFriendly: true }
+  },
+
+  // ─── Annual Security Budget ─────────────────
+  {
+    id: 'annual-security-budget',
+    title: 'Annual Security Budget',
+    description: 'What is your approximate annual cyber security budget?',
+    type: 'singleSelect',
+    tooltip: 'Budget constraints help us recommend appropriate service tiers and implementation approaches',
+    required: true,
+    weight: 1.1,
+    options: [
+      { id: 'under-10k', label: 'Under £10,000', value: 'under-10k', riskMultiplier: 1.4, tooltip: 'Limited budget requires focused priorities', riskImpact: 'medium' },
+      { id: '10k-50k', label: '£10,000 - £50,000', value: '10k-50k', riskMultiplier: 1.2, tooltip: 'Good foundation budget for SMEs', riskImpact: 'low' },
+      { id: '50k-100k', label: '£50,000 - £100,000', value: '50k-100k', riskMultiplier: 1.0, tooltip: 'Comprehensive security programme possible', riskImpact: 'low' },
+      { id: '100k-500k', label: '£100,000 - £500,000', value: '100k-500k', riskMultiplier: 0.9, tooltip: 'Enterprise-grade security capabilities', riskImpact: 'low' },
+      { id: '500k-1m', label: '£500,000 - £1,000,000', value: '500k-1m', riskMultiplier: 0.8, tooltip: 'Advanced security with dedicated resources', riskImpact: 'low' },
+      { id: 'over-1m', label: 'Over £1,000,000', value: 'over-1m', riskMultiplier: 0.7, tooltip: 'Mature security organization possible', riskImpact: 'low' },
+      { id: 'no-budget', label: 'No Dedicated Security Budget', value: 'no-budget', riskMultiplier: 1.8, tooltip: 'High risk due to resource constraints', riskImpact: 'high' }
+    ],
+    meta: { noviceFriendly: true }
+  },
+
+// ─── 7. Implementation Timeline ────────────────────────────────────────────────
+{
+  id: 'urgency-timeline',
+  title: 'Implementation timeline',
+  description: "What's driving your cyber security initiative timeline?",
+  type: 'multiSelect',
+  tooltip: 'Helps prioritise services and onboarding approach',
+  required: true,
+  weight: 1.3,
+  options: [
+    { id: 'immediate-threat',      label: 'Immediate threat response',     value: 'immediate-threat',      riskMultiplier: 2.0, tooltip: 'Active incident demands urgent action',           riskImpact: 'critical' },
+    { id: 'compliance-deadline',   label: 'Compliance deadline',           value: 'compliance-deadline',   riskMultiplier: 1.8, tooltip: 'Fixed audit or regulatory deadline',               riskImpact: 'high' },
+    { id: 'board-mandate',         label: 'Board mandate',                 value: 'board-mandate',         riskMultiplier: 1.5, tooltip: 'Executive directive for security improvement',    riskImpact: 'medium' },
+    { id: 'growth-scaling',        label: 'Business growth/scaling',       value: 'growth-scaling',        riskMultiplier: 1.2, tooltip: 'Support expansion with security foundation',     riskImpact: 'medium' },
+    { id: 'contract-requirement',  label: 'Contract requirement',          value: 'contract-requirement',  riskMultiplier: 1.4, tooltip: 'Security clauses in client contracts',           riskImpact: 'medium' },
+    { id: 'strategic-planning',    label: 'Strategic planning',            value: 'strategic-planning',    riskMultiplier: 1.0, tooltip: 'Planned roadmap integration',                     riskImpact: 'low' },
+    { id: 'no-urgency',            label: 'No specific urgency',           value: 'no-urgency',            riskMultiplier: 0.8, tooltip: 'Enhancement without time pressure',               riskImpact: 'low' }
+  ],
+  meta: { noviceFriendly: true }
+},
+
+  // ─── 8. Primary Threat Concerns (expert/intermediate only) ───────────────────────────────────────────────
+  {
+    id: 'threat-priorities',
+    title: 'Top Security Concerns',
+    description: 'Which security threats are you most concerned about? (Select up to 4 that worry you most)',
+    type: 'multiSelect',
+    tooltip: 'Helps us prioritise the most relevant security controls for your threat landscape',
+    required: true,
+    weight: 1.6,
+    options: [
+      { id: 'ransomware', label: 'Ransomware Attacks', value: 'ransomware', riskMultiplier: 2.1, tooltip: 'Business shutdown, data encryption, ransom demands', riskImpact: 'critical' },
+      { id: 'data-breach', label: 'Data Breaches & Privacy Violations', value: 'data-breach', riskMultiplier: 1.9, tooltip: 'Customer data theft, GDPR fines, reputation damage', riskImpact: 'critical' },
+      { id: 'phishing', label: 'Phishing & Email Attacks', value: 'phishing', riskMultiplier: 1.6, tooltip: 'Employee credential theft, initial access vector', riskImpact: 'high' },
+      { id: 'insider-threat', label: 'Insider Threats', value: 'insider-threat', riskMultiplier: 1.7, tooltip: 'Malicious employees, negligent data handling', riskImpact: 'high' },
+      { id: 'supply-chain', label: 'Vendor/Supply Chain Attacks', value: 'supply-chain', riskMultiplier: 1.8, tooltip: 'Third-party compromises affecting your systems', riskImpact: 'high' },
+      { id: 'cloud-security', label: 'Cloud Security Breaches', value: 'cloud-security', riskMultiplier: 1.5, tooltip: 'Misconfigured cloud services, data exposure', riskImpact: 'high' },
+      { id: 'regulatory-compliance', label: 'Regulatory Non-Compliance', value: 'regulatory-compliance', riskMultiplier: 1.4, tooltip: 'Fines, legal action, business restrictions', riskImpact: 'medium' },
+      { id: 'business-disruption', label: 'Business Continuity Disruption', value: 'business-disruption', riskMultiplier: 1.3, tooltip: 'System outages, productivity loss', riskImpact: 'medium' },
+      { id: 'financial-fraud', label: 'Financial Fraud & Theft', value: 'financial-fraud', riskMultiplier: 1.6, tooltip: 'Payment fraud, financial system compromise', riskImpact: 'high' },
+      { id: 'ip-theft', label: 'Intellectual Property Theft', value: 'ip-theft', riskMultiplier: 1.4, tooltip: 'Trade secrets, competitive advantage loss', riskImpact: 'medium' },
+      { id: 'reputation-damage', label: 'Brand & Reputation Damage', value: 'reputation-damage', riskMultiplier: 1.2, tooltip: 'Customer trust loss, market impact', riskImpact: 'medium' },
+      { id: 'advanced-threats', label: 'Advanced Persistent Threats (APTs)', value: 'advanced-threats', riskMultiplier: 1.9, tooltip: 'Sophisticated, long-term attacks', riskImpact: 'critical' }
+    ],
+    meta: { 
+      hideIf: [
+        { questionId: 'user-proficiency', operator: 'equals', value: 'novice' }
+      ]
+    }
+  },
+
+  // ─── 9. Service Delivery Preferences ─────────────────────────────────────────
+  {
+    id: 'delivery-preferences',
+    title: 'Service Delivery Preferences',
+    description: 'How would you prefer to receive cyber security services?',
+    type: 'multiSelect',
+    tooltip: 'Delivery model shapes implementation approach and ongoing management',
+    required: true,
+    weight: 1.1,
+    options: [
+      { id: 'fully-managed', label: 'Fully managed/outsourced', value: 'fully-managed', riskMultiplier: 0.8, tooltip: 'Complete operations managed by Hanco Cyber', riskImpact: 'low' },
+      { id: 'hybrid-support', label: 'Hybrid (in-house + external)', value: 'hybrid-support', riskMultiplier: 0.9, tooltip: 'Mix of internal team and external expertise', riskImpact: 'low' },
+      { id: 'white-label', label: 'White-label services', value: 'white-label', riskMultiplier: 1.0, tooltip: 'Services delivered under your brand', riskImpact: 'medium' },
+      { id: 'consulting-advisory', label: 'Consulting & advisory', value: 'consulting-advisory', riskMultiplier: 1.2, tooltip: 'Strategic guidance for your internal team', riskImpact: 'medium' },
+      { id: 'staff-augmentation', label: 'Staff augmentation', value: 'staff-augmentation', riskMultiplier: 1.1, tooltip: 'Embed Hanco experts within your team', riskImpact: 'low' },
+      { id: 'project-based', label: 'Project-based delivery', value: 'project-based', riskMultiplier: 1.0, tooltip: 'Defined deliverables and timelines', riskImpact: 'medium' },
+    ],
+    meta: { noviceFriendly: true }
+  },
+
+  // ─── 10. Enterprise-specific questions (conditional) ─────────────────────────────────────────
+  {
+    id: 'enterprise-complexity',
+    title: 'Enterprise complexity factors',
+    description: 'Select all factors that apply to your enterprise environment',
+    type: 'multiSelect',
+    tooltip: 'Enterprise environments have unique security challenges',
+    required: true,
+    weight: 1.4,
+    options: [
+      { id: 'multi-cloud', label: 'Multi-cloud infrastructure', value: 'multi-cloud', riskMultiplier: 1.3, tooltip: 'Complex cloud security management', riskImpact: 'medium' },
+      { id: 'legacy-systems', label: 'Legacy systems integration', value: 'legacy-systems', riskMultiplier: 1.6, tooltip: 'Older systems with security limitations', riskImpact: 'high' },
+      { id: 'mergers-acquisitions', label: 'Recent M&A activity', value: 'mergers-acquisitions', riskMultiplier: 1.5, tooltip: 'Integration challenges and security gaps', riskImpact: 'high' },
+      { id: 'global-operations', label: 'Global operations', value: 'global-operations', riskMultiplier: 1.4, tooltip: 'Multiple jurisdictions and regulations', riskImpact: 'medium' },
+      { id: 'critical-infrastructure', label: 'Critical infrastructure', value: 'critical-infrastructure', riskMultiplier: 1.8, tooltip: 'High-impact operational technology', riskImpact: 'critical' },
+    ],
+    meta: {
+      showIf: [
+        { questionId: 'org-profile', operator: 'includes', value: 'enterprise' },
+        { questionId: 'org-profile', operator: 'includes', value: 'multinational' }
+      ]
+    }
+  },
+
+  // ─── 11. Startup-specific questions (conditional) ─────────────────────────────────────────
+  {
+    id: 'startup-priorities',
+    title: 'Startup Security Priorities',
+    description: 'What are your main security concerns as a growing startup?',
+    type: 'multiSelect',
+    tooltip: 'Startups have unique security needs and constraints',
+    required: true,
+    weight: 1.2,
+    options: [
+      { id: 'investor-requirements', label: 'Investor security requirements', value: 'investor-requirements', riskMultiplier: 1.2, tooltip: 'Due diligence and compliance for funding', riskImpact: 'medium' },
+      { id: 'customer-trust', label: 'Building customer trust', value: 'customer-trust', riskMultiplier: 1.1, tooltip: 'Security as competitive advantage', riskImpact: 'low' },
+      { id: 'rapid-scaling', label: 'Rapid scaling challenges', value: 'rapid-scaling', riskMultiplier: 1.3, tooltip: 'Security keeping pace with growth', riskImpact: 'medium' },
+      { id: 'limited-budget', label: 'Limited security budget', value: 'limited-budget', riskMultiplier: 1.4, tooltip: 'Cost-effective security solutions', riskImpact: 'medium' },
+      { id: 'regulatory-readiness', label: 'Regulatory readiness', value: 'regulatory-readiness', riskMultiplier: 1.2, tooltip: 'Preparing for compliance requirements', riskImpact: 'low' },
+    ],
+    meta: {
+      showIf: [
+        { questionId: 'org-profile', operator: 'includes', value: 'startup' }
+      ]
+    }
   }
+];
 
-  // 5. Compliance & Governance - Essential for regulated industries or compliance deadlines
-  if (hasComplianceDeadline || isFinancial || isHealthcare || (compliance?.selectedOptions?.length ?? 0) > 1) {
-    recs.push({
-      id: 'compliance-governance',
-      name: 'Compliance & Security Governance',
-      description: 'Comprehensive compliance management covering GDPR, NIS2, ISO 27001, PCI DSS, and sector-specific requirements with automated evidence collection and audit support.',
-      priority: hasComplianceDeadline ? 'Essential' : 'Recommended',
-      timeframe: hasComplianceDeadline ? '4-8 weeks (expedited)' : '8-12 weeks',
-      benefits: [
-        'Automated compliance monitoring and evidence collection',
-        'Gap analysis and remediation roadmaps',
-        'Audit support and documentation management',
-        'Policy development and staff training programmes',
-        'Continuous compliance posture monitoring'
-      ],
-      technicalDetails: [
-        'GRC platforms (ServiceNow GRC, MetricStream, or RSA Archer)',
-        'Automated control testing and evidence collection',
-        'Policy management and version control systems',
-        'Risk register and treatment plan management',
-        'Compliance dashboard with real-time status updates',
-        'Integration with security tools for continuous monitoring',
-        'Audit trail and documentation management systems'
-      ],
-      pricingEstimate: {
-        range: isStartup 
-          ? formatCurrencyRange(1500, 4000, currency) + '/month'
-          : isEnt 
-          ? formatCurrencyRange(5000, 15000, currency) + '/month'
-          : formatCurrencyRange(3000, 8000, currency) + '/month',
-        model: 'Based on frameworks and organisational complexity',
-        factors: [
-          'Number of compliance frameworks',
-          'Organisational size and complexity',
-          'Audit frequency and scope',
-          'Custom policy development needs',
-          'Training and awareness requirements'
-        ]
-      },
-      hancoAdvantage: [
-        'Pre-built compliance templates for 20+ frameworks',
-        'Relationships with certification bodies and auditors',
-        'Automated evidence collection reducing audit prep by 70%',
-        'Multi-framework approach avoiding compliance complexity penalties',
-        'Fixed-price compliance packages with no scope creep',
-        'Ongoing compliance monitoring, not just point-in-time assessments'
-      ],
-      addressedRisks: [
-        `Compliance Risk: ${riskScore.breakdown.compliance}% → Reduced to <15%`,
-        'Regulatory fines and penalties',
-        'Failed audits and certification delays',
-        'Data protection violations and privacy breaches',
-        'Contractual compliance failures'
-      ],
-      scalingOptions: [
-        'Single Framework (e.g., GDPR only)',
-        'Multi-Framework (2-3 frameworks)',
-        'Enterprise Governance (comprehensive GRC)'
-      ],
-      implementation: {
-        phase1: 'Gap analysis, framework mapping, baseline assessment',
-        phase2: 'Policy development, control implementation, staff training',
-        phase3: 'Continuous monitoring, audit preparation, certification support'
-      }
-    });
-  }
-
-  // 6. Cloud Security - Essential for cloud-heavy organisations
-  if (org?.selectedOptions.includes('remote-first') || riskScore.breakdown.technical > 60) {
-    recs.push({
-      id: 'cloud-security',
-      name: 'Cloud Security & Zero Trust Architecture',
-      description: 'Comprehensive cloud security implementation including CSPM, CWPP, and zero trust network access with multi-cloud support for AWS, Azure, and Google Cloud.',
-      priority: 'Recommended',
-      timeframe: '3-6 weeks for full implementation',
-      benefits: [
-        'Cloud Security Posture Management (CSPM) across all cloud platforms',
-        'Container and serverless security protection',
-        'Zero trust network access implementation',
-        'Cloud workload protection and runtime security',
-        'DevSecOps integration and infrastructure as code security'
-      ],
-      technicalDetails: [
-        'Prisma Cloud or Dome9 for multi-cloud security posture management',
-        'Aqua Security or Twistlock for container protection',
-        'Zscaler or Palo Alto Prisma Access for zero trust network access',
-        'AWS GuardDuty, Azure Sentinel, GCP Security Command Center integration',
-        'Terraform and CloudFormation security scanning',
-        'Kubernetes security hardening (CIS benchmarks)',
-        'Cloud access security broker (CASB) implementation'
-      ],
-      pricingEstimate: {
-        range: formatCurrencyRange(2000, 8000, currency) + '/month',
-        model: 'Based on cloud spend and workload complexity',
-        factors: [
-          'Number of cloud accounts and subscriptions',
-          'Workload types (containers, serverless, VMs)',
-          'Data classification and sensitivity',
-          'Integration complexity',
-          'Compliance requirements'
-        ]
-      },
-      hancoAdvantage: [
-        'Certified cloud architects for all major platforms (AWS, Azure, GCP)',
-        'Pre-built security baselines and hardening scripts',
-        'Cost optimisation alongside security improvements',
-        'DevSecOps integration without slowing development cycles',
-        'Multi-cloud expertise avoiding vendor lock-in',
-        'Automated remediation for 80% of common misconfigurations'
-      ],
-      addressedRisks: [
-        'Cloud misconfigurations and exposed resources',
-        'Container and Kubernetes security vulnerabilities',
-        'Insider threats in cloud environments',
-        'Data breaches in cloud storage',
-        'Compliance violations in cloud deployments'
-      ],
-      scalingOptions: [
-        'Single Cloud Platform Security',
-        'Multi-Cloud Security Management',
-        'Enterprise Zero Trust Implementation'
-      ],
-      implementation: {
-        phase1: 'Cloud asset discovery, security baseline assessment, quick wins',
-        phase2: 'CSPM deployment, policy enforcement, zero trust planning',
-        phase3: 'Advanced protection, automation, continuous improvement'
-      }
-    });
-  }
-
-  // 7. Security Awareness & Training - Recommended for all, essential for high phishing risk
-  if (threats?.selectedOptions.includes('phishing') || hasBasicMaturity || riskScore.breakdown.operational > 50) {
-    const userCostMin = isStartup ? 15 : isEnt ? 25 : 20;
-    const userCostMax = isStartup ? 35 : isEnt ? 50 : 40;
-    
-    recs.push({
-      id: 'security-training',
-      name: 'Security Awareness & Phishing Simulation',
-      description: 'Comprehensive security awareness programme with simulated phishing campaigns, role-based training, and measurable behaviour change tracking.',
-      priority: threats?.selectedOptions.includes('phishing') ? 'Essential' : 'Recommended',
-      timeframe: '2-4 weeks for programme launch',
-      benefits: [
-        'Measurable reduction in successful phishing attempts',
-        'Role-based security training tailored to job functions',
-        'Continuous phishing simulation and testing',
-        'Security culture development and engagement metrics',
-        'Compliance training for regulatory requirements'
-      ],
-      technicalDetails: [
-        'KnowBe4 or Proofpoint security awareness platform',
-        'Custom phishing simulation campaigns',
-        'Learning management system (LMS) integration',
-        'Behavioural analytics and reporting dashboards',
-        'Mobile device security training modules',
-        'Incident reporting and response training',
-        'Executive and board-level security briefings'
-      ],
-      pricingEstimate: {
-        range: `${formatCurrencyRange(userCostMin, userCostMax, currency)} per user per year`,
-        model: 'Per-user annual licensing',
-        factors: [
-          'Number of users and locations',
-          'Training content customisation',
-          'Simulation frequency and complexity',
-          'Reporting and analytics requirements',
-          'Integration with HR systems'
-        ]
-      },
-      hancoAdvantage: [
-        'Custom training content based on your industry and threats',
-        'Behavioural psychology expertise for lasting behaviour change',
-        'Integration with incident response for real-world learning',
-        'Multilingual training content for global organisations',
-        'Gamification and engagement strategies proven to work',
-        'Measurable ROI through reduced security incidents'
-      ],
-      addressedRisks: [
-        `Operational Risk: ${Math.min(30, riskScore.breakdown.operational)}% reduction through human factor improvements`,
-        'Phishing and social engineering attacks',
-        'Insider threats and negligent data handling',
-        'Password-related security incidents',
-        'Compliance violations due to staff errors'
-      ],
-      scalingOptions: [
-        'Basic Awareness (quarterly training)',
-        'Advanced Programme (monthly simulations)',
-        'Premium with Custom Content'
-      ],
-      implementation: {
-        phase1: 'Baseline assessment, platform setup, initial training launch',
-        phase2: 'Phishing simulations, targeted training, progress tracking',
-        phase3: 'Advanced scenarios, culture measurement, continuous improvement'
-      }
-    });
-  }
-
-  return recs;
-}
-
-/** ROI **/
-export function calculateROI(
-  responses: AssessmentResponse[],
-  riskScore: RiskScore
-): ROIModel {
-  const ind = responses.find(r=>r.questionId==='industry-vertical');
-  const orgS = responses.find(r=>r.questionId==='org-profile');
-  const comp = responses.find(r=>r.questionId==='compliance-needs');
-  const currency = responses.find(r=>r.questionId==='currency-preference')?.selectedOptions[0] || 'gbp';
-
-  let base=50_000, loss=500_000;
-  if (orgS?.selectedOptions.includes('startup')) { base=25_000; loss=250_000; }
-  else if (orgS?.selectedOptions.includes('enterprise')) { base=150_000; loss=2_000_000; }
-  else if (orgS?.selectedOptions.includes('multinational')) { base=300_000; loss=5_000_000; }
-
-  if (ind?.selectedOptions.includes('financial')) { loss*=3; base*=1.5; }
-  else if (ind?.selectedOptions.includes('healthcare')) { loss*=2.5; base*=1.4; }
-
-  const mul=riskScore.overall/100; loss*=1+mul;
-
-  const count=comp?.selectedOptions?.length||0;
-  let penalty=null;
-  if (count>=4) {
-    const pm=1+(count-3)*0.25;
-    const add=base*(pm-1);
-    const eff=Math.min(30,(count-3)*8);
-    base*=pm;
-    penalty={ isApplicable:true, description:'Multiple frameworks create overhead & operational complexity', additionalCost:Math.round(add), efficiencyLoss:eff };
-  }
-
-  const red=Math.min(85,60+base/10_000);
-  const adj=penalty?red-penalty.efficiencyLoss:red;
-  const months=Math.max(3,Math.round(base/(loss*(adj/100)/12)));
-
-  return {
-    investmentRange: formatCurrencyRange(base*0.8, base*1.2, currency),
-    estimatedLossPrevention: Math.round(loss*(adj/100)),
-    paybackPeriod: `${months} months`,
-    riskReduction: Math.round(adj),
-    complianceComplexityPenalty: penalty ? {
-      ...penalty,
-      additionalCost: Math.round(penalty.additionalCost)
-    } : undefined
-  };
-}
-
-/** Final results builder **/
-export function generateAssessmentResults(
-  responses: AssessmentResponse[],
-  questions: AssessmentQuestion[]
-): AssessmentResults {
-  const riskScore = calculateRiskScore(responses, questions);
-  const gaps      = analyzeComplianceGaps(responses);
-  const recs      = generateServiceRecommendations(responses, riskScore);
-  const roi       = calculateROI(responses, riskScore);
-  const thrResp   = responses.find(r=>r.questionId==='threat-priorities');
-  const threatProfile = thrResp?.selectedOptions||[];
-  const indResp   = responses.find(r=>r.questionId==='industry-vertical');
-  const avg       = indResp?.selectedOptions.includes('financial')?78:indResp?.selectedOptions.includes('healthcare')?75:68;
-  const peerComp  = riskScore.overall>avg?'Above Average Risk':riskScore.overall<avg-10?'Below Average Risk':'Average Risk';
-
-  return {
-    riskScore,
-    complianceGaps:gaps,
-    serviceRecommendations:recs,
-    roiModel:roi,
-    threatProfile,
-    benchmarkData:{ industryAverage:avg, peerComparison:peerComp }
-  };
-}
+export const leadCaptureFields = [
+  { id: 'firstName', label: 'First Name', type: 'text', required: true },
+  { id: 'lastName', label: 'Last Name', type: 'text', required: true },
+  { id: 'email', label: 'Business Email', type: 'email', required: true },
+  { id: 'company', label: 'Company Name', type: 'text', required: true },
+  { id: 'jobTitle', label: 'Job Title', type: 'text', required: true },
+  { id: 'phone', label: 'Phone Number', type: 'tel', required: false },
+];
