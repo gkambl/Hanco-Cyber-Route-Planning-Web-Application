@@ -1,35 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ArrowRight, Users, Award, Globe, TrendingUp, Calendar } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 
-const stats = [
-  { label: 'Assessments Completed', value: 2847, prefix: '', suffix: '+' },
-  { label: 'Average Risk Score', value: 72, prefix: '', suffix: '%' },
-  { label: 'Client Retention Rate', value: 95, prefix: '', suffix: '%' },
-  { label: 'Countries Served', value: 23, prefix: '', suffix: '' },
-];
-
 export default function Home() {
-  const [currentStats, setCurrentStats] = useState(stats);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentStats(prev => prev.map(stat => ({
-        ...stat,
-        value: stat.value + Math.floor(Math.random() * 3) - 1
-      })));
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, []);
-
   const handleScheduleConsultation = () => {
-    window.open('https://calendly.com/goureshkamble/cyber-security-consultation1?back=1&month=2025-06', '_blank');
+    window.open('https://hancocyber.com/contact-us/', '_blank');
   };
 
   return (
@@ -109,20 +88,6 @@ export default function Home() {
       </Link>
     </div>
 
-    {/* 5️⃣ Stats Grid */}
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-      {currentStats.map((stat, index) => (
-        <Card
-          key={index}
-          className="p-6 text-center border-red-100 hover:border-red-200 transition-colors"
-        >
-          <div className="text-3xl font-bold text-red-600 mb-2">
-            {stat.prefix}{stat.value}{stat.suffix}
-          </div>
-          <div className="text-sm text-gray-600">{stat.label}</div>
-        </Card>
-      ))}
-    </div>
   </div>
 </section>
 
@@ -169,7 +134,7 @@ export default function Home() {
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-4">Global Expertise</h3>
               <p className="text-gray-600">
-                95% client retention rate with the ability to operate globally. Deep understanding 
+                Experience working with organisations internationally, and a working knowledge
                 of international compliance frameworks and threat landscapes.
               </p>
             </Card>

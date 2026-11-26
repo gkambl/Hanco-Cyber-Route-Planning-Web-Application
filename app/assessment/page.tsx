@@ -273,7 +273,7 @@ export default function Assessment() {
   };
 
   const handleScheduleConsultation = () => {
-    window.open('https://calendly.com/goureshkamble/cyber-security-consultation1?back=1&month=2025-06', '_blank');
+    window.open('https://hancocyber.com/contact-us/', '_blank');
   };
 
   const getRiskColor = (impact: string) => {

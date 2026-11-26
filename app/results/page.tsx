@@ -146,7 +146,7 @@ ${leadData?.firstName} ${leadData?.lastName}`);
   };
 
   const handleScheduleConsultation = () => {
-    window.open('https://calendly.com/goureshkamble/cyber-security-consultation1?back=1&month=2025-06', '_blank');
+    window.open('https://hancocyber.com/contact-us/', '_blank');
   };
 
   if (isLoading || !results) {
@@ -517,7 +517,7 @@ ${leadData?.firstName} ${leadData?.lastName}`);
                   </div>
                   <div>
                     <h5 className="font-semibold mb-2">Proven results:</h5>
-                    <p>95% client retention rate because we deliver measurable security improvements, not just compliance checkboxes. Your success is our success.</p>
+                    <p>The focus is measurable security improvements, not just compliance checkboxes.</p>
                   </div>
                 </div>
               </div>
@@ -696,7 +696,7 @@ ${leadData?.firstName} ${leadData?.lastName}`);
               <div className="space-y-3">
                 <div className="flex items-center text-sm">
                   <Star className="h-4 w-4 text-yellow-500 mr-2" />
-                  <span>95% client retention rate</span>
+                  <span>Practical, measurable security improvements</span>
                 </div>
                 <div className="flex items-center text-sm">
                   <Users className="h-4 w-4 text-blue-500 mr-2" />
