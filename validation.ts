@@ -85,7 +85,7 @@ export const inputsSchema = z.object({
 
   // Industry is dropdown-only
   industry: z.enum(INDUSTRY_VALUES, {
-    errorMap: () => ({ message: 'Choose a valid industry from the list' }),
+    message: 'Choose a valid industry from the list',
   }),
 
   businessUnits: z.string()
